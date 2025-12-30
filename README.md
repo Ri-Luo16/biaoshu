@@ -56,14 +56,6 @@
 
 ## 📦 快速开始
 
-### 方式一：直接运行 (Windows用户推荐)
-
-1. 在 [Releases](https://github.com/yibiaoai/yibiao-simple/releases) 下载最新的 `yibiao-simple.exe`。
-2. 双击运行，浏览器自动打开应用。
-3. 在设置中配置 AI 模型 API Key (推荐使用 DeepSeek 或 OpenAI)。
-
-### 方式二：源码部署
-
 #### 前置要求
 - Python 3.10+
 - Node.js 16+
@@ -71,8 +63,8 @@
 
 #### 1. 启动后端服务
 ```bash
-git clone https://github.com/yibiaoai/yibiao-simple.git
-cd yibiao-simple/backend
+git clone https://github.com/Ri-Luo16/biaoshu.git
+cd backend
 pip install -r requirements.txt
 python run.py
 ```
@@ -112,8 +104,3 @@ npm start
 本项目基于 [MIT License](LICENSE) 开源。
 
 ---
-
-<p align="center">
-  ⭐ 如果觉得项目不错，请给一个 Star 支持！<br>
-  Made with ❤️ by AI标书团队
-</p>

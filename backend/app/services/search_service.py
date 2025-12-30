@@ -88,7 +88,8 @@ class SearchService:
                 if not in_list:
                     in_list = True
                     if formatted_lines and formatted_lines[-1]: formatted_lines.append('')
-                formatted_lines.append(f"- {re.sub(r'^[•·▪▫○●◦‣⁃0-9a-zA-Z.)\]]+\s*', '', line)}")
+                cleaned_line = re.sub(r'^[•·▪▫○●◦‣⁃0-9a-zA-Z.)\]]+\s*', '', line)
+                formatted_lines.append(f"- {cleaned_line}")
             else:
                 if in_list: in_list = False; formatted_lines.append('')
                 formatted_lines.append(line)
@@ -98,7 +99,8 @@ class SearchService:
             content = f"# {title.strip()}\n\n{content}"
         
         content = re.sub(r'\n([ ]{4,}|\t+)([^\n]+)', r'\n> \2', content)
-        content = '\n'.join(f"`{l}`" if len(l) > 10 and sum(1 for c in l if c in '{}(=<>/\ ') / len(l) > 0.2 else l for l in content.split('\n'))
+        special_chars = '{}(=<>/\ '
+        content = '\n'.join(f"`{l}`" if len(l) > 10 and sum(1 for c in l if c in special_chars) / len(l) > 0.2 else l for l in content.split('\n'))
         
         merged, cur = [], ""
         for line in content.split('\n'):
