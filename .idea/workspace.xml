@@ -4,62 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3fae9589-ccf4-4a44-83bc-f2def4d11996" name="更改" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/yibiao-simple.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/app/services/milvus_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/import_docs.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书功能 - 副本.xlsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/1/招标文件/成都市温江区智慧矫正中心消防改造工程-工程量清单.xls" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/1/招标文件/挂网版-成都市温江区智慧矫正中心消防改造工程竞争性磋商文件.doc" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/2/招标文件/技术、服务及其他要求.doc" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/3/招标文件/包1_完整招标文件_62645776423564980/bidpkgsign20250324_122521_565.sign" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/3/招标文件/包1_完整招标文件_62645776423564980/包1_技术规范书_62645776410992391.zip" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/3/招标文件/包1_完整招标文件_62645776423564980/合同文件.zip" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/3/招标文件/包1_完整招标文件_62645776423564980/招标公告--国网冀北电力有限公司2025年第二次零星服务公开招标采购.zip" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/3/招标文件/包4_完整招标文件_62645776637451937/bidpkgsign20250324_122521_563.sign" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/3/招标文件/包4_完整招标文件_62645776637451937/包4_技术规范书_62645776630946506.zip" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/3/招标文件/包4_完整招标文件_62645776637451937/合同文件.zip" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/3/招标文件/包4_完整招标文件_62645776637451937/招标公告--国网冀北电力有限公司2025年第二次零星服务公开招标采购.zip" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/4/成品标书/响应文件（报价文件）.doc" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/4/成品标书/响应文件（资信商务及技术文件）.doc" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/4/成品标书/响应文件（资信审查文件）.doc" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/4/成品标书/密封条.doc" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/4/成品标书/封套.doc" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/4/成品标书/封皮.doc" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/标书资料/4/招标文件/采购文件---浙江省淳安县第二中学2025年校园文化活动服务定点供应商采购项目 - 终.doc" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/models/schemas.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/models/schemas.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/routers/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/routers/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/routers/content.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/routers/content.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/routers/document.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/routers/document.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/routers/expand.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/routers/expand.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/routers/outline.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/routers/outline.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/services/file_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/services/file_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/services/openai_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/services/openai_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/services/search_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/services/search_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/utils/config_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/utils/config_manager.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/utils/json_util.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/utils/json_util.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/utils/outline_util.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/utils/outline_util.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/app/utils/prompt_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/utils/prompt_manager.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/mcp/client/test.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/mcp/server/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/mcp/server/duckduckgo/mian.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/test_api.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/Sidebar.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Sidebar.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/hooks/useAppState.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/hooks/useAppState.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/ContentEdit.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/ContentEdit.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/pages/DocumentAnalysis.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/pages/DocumentAnalysis.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/services/api.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/services/api.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/types/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/types/index.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/utils/draftStorage.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/utils/draftStorage.ts" afterDir="false" />
+    <list default="true" id="3fae9589-ccf4-4a44-83bc-f2def4d11996" name="更改" comment="标书功能添加 12-30">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -110,8 +56,17 @@
       <option name="presentableId" value="Default" />
       <updated>1766992224493</updated>
       <workItem from="1766992225574" duration="165000" />
-      <workItem from="1767057057141" duration="519000" />
+      <workItem from="1767057057141" duration="2143000" />
     </task>
+    <task id="LOCAL-00001" summary="标书功能添加 12-30">
+      <option name="closed" value="true" />
+      <created>1767057783156</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1767057783156</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -159,5 +114,9 @@
         </entry>
       </map>
     </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="标书功能添加 12-30" />
+    <option name="LAST_COMMIT_MESSAGE" value="标书功能添加 12-30" />
   </component>
 </project>
