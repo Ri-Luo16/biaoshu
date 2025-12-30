@@ -23,6 +23,15 @@ export type ProjectType = 'engineering' | 'service' | 'goods' | 'general';
 export type AnalysisType = 'overview' | 'requirements' | 'structural';
 
 export interface StructuralAnalysis {
+  project_summary?: {
+    total_score: number | string;
+    mandatory_count: number;
+    budget?: string;
+    delivery_time?: string;
+    qualification_count: number;
+  };
+  executive_summary?: string;
+  action_items?: string[];
   qualification: string[];
   technical_requirements: Array<{ item: string; value: string; mandatory: boolean }>;
   scoring_criteria: Record<string, number | string>;
@@ -55,3 +64,54 @@ export interface GenerateContentRequest {
   project_overview: string;
 }
 
+// --- Bidding Agent Types ---
+
+export interface TenderInfo {
+  project_name: string;
+  project_number?: string;
+  tender_deadline?: string;
+  budget?: string;
+  purchaser?: string;
+  agency?: string;
+  qualifications?: string[];
+  evaluation_method?: string;
+  technical_requirements?: string[];
+}
+
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export interface RiskItem {
+  clause: string;
+  description: string;
+  level: RiskLevel;
+  suggestion: string;
+}
+
+export interface RiskAnalysisResponse {
+  overall_risk: RiskLevel;
+  risks: RiskItem[];
+  summary: string;
+}
+
+export interface GoNoGoDecision {
+  decision: boolean;
+  score: number;
+  reasoning: string;
+  pros: string[];
+  cons: string[];
+  missing_capabilities: string[];
+}
+
+export interface ScoringItem {
+  item_name: string;
+  max_score: number;
+  predicted_score: number;
+  analysis: string;
+  optimization_suggestion: string;
+}
+
+export interface ScoringSimulationResponse {
+  total_score: number;
+  win_probability: string;
+  items: ScoringItem[];
+}

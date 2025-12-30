@@ -1,10 +1,13 @@
 """内容相关API路由"""
+import json
+from typing import AsyncGenerator
+
 from fastapi import APIRouter, HTTPException
-from ..models.schemas import ContentGenerationRequest, ChapterContentRequest
+
+from ..models.schemas import ChapterContentRequest
 from ..services.openai_service import OpenAIService
 from ..utils.config_manager import config_manager
 from ..utils.sse import sse_response
-import json
 
 router = APIRouter(prefix="/api/content", tags=["内容管理"])
 
@@ -35,7 +38,7 @@ async def generate_chapter_content(request: ChapterContentRequest):
         return {"success": True, "content": content}
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"章节内容生成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"章节内容生成失败: {e}")
 
 
 @router.post("/generate-chapter-stream")
@@ -51,25 +54,23 @@ async def generate_chapter_content_stream(request: ChapterContentRequest):
         # 创建OpenAI服务实例
         openai_service = OpenAIService()
         
-        async def generate():
+        async def generate() -> AsyncGenerator[str, None]:
             try:
                 # 发送开始信号
                 yield f"data: {json.dumps({'status': 'started', 'message': '开始生成章节内容...'}, ensure_ascii=False)}\n\n"
                 
                 # 流式生成章节内容
-                full_content = ""
                 async for chunk in openai_service._generate_chapter_content(
                     chapter=request.chapter,
                     parent_chapters=request.parent_chapters,
                     sibling_chapters=request.sibling_chapters,
                     project_overview=request.project_overview
                 ):
-                    full_content += chunk
-                    # 实时发送内容片段
-                    yield f"data: {json.dumps({'status': 'streaming', 'content': chunk, 'full_content': full_content}, ensure_ascii=False)}\n\n"
+                    # 实时发送内容片段，不再发送庞大的 full_content
+                    yield f"data: {json.dumps({'status': 'streaming', 'content': chunk}, ensure_ascii=False)}\n\n"
                 
                 # 发送完成信号
-                yield f"data: {json.dumps({'status': 'completed', 'content': full_content}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'status': 'completed'}, ensure_ascii=False)}\n\n"
                 
             except Exception as e:
                 # 发送错误信息
@@ -81,4 +82,4 @@ async def generate_chapter_content_stream(request: ChapterContentRequest):
         return sse_response(generate())
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"章节内容生成失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"章节内容生成失败: {e}")

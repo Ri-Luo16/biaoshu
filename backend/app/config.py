@@ -1,10 +1,10 @@
 """应用配置管理"""
+from pathlib import Path
+from typing import Optional
 try:
     from pydantic_settings import BaseSettings
 except ImportError:
     from pydantic import BaseSettings
-from typing import Optional
-import os
 
 
 class Settings(BaseSettings):
@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     # OpenAI默认设置
     default_model: str = "gpt-3.5-turbo"
     
+    # Milvus 默认设置
+    # 如果使用 Docker 部署的 Milvus，请将 uri 改为 "http://localhost:19530"
+    # 如果使用本地 Lite 版，保持 "./milvus_demo.db"
+    milvus_uri: str = "http://localhost:19530" 
+    milvus_collection: str = "bid_documents"
+
+    # Ollama 设置
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_embedding_model: str = "nomic-embed-text" # 推荐的 embedding 模型
+
     class Config:
         env_file = ".env"
 
@@ -42,4 +52,4 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # 确保上传目录存在
-os.makedirs(settings.upload_dir, exist_ok=True)
+Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)

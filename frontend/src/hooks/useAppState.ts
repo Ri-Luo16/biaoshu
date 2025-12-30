@@ -2,6 +2,12 @@
  * 应用状态管理 Hook
  */
 import { useState, useCallback } from 'react';
+import type { 
+  TenderInfo, 
+  RiskAnalysisResponse, 
+  GoNoGoDecision, 
+  ScoringSimulationResponse 
+} from '../types';
 
 export interface AppState {
   currentStep: number;
@@ -16,6 +22,13 @@ export interface AppState {
   structuralAnalysis: string;
   outlineData: any[];
   selectedChapter: any;
+  
+  // Bidding Agent State
+  tenderInfo: TenderInfo | null;
+  riskAnalysis: RiskAnalysisResponse | null;
+  bidDecision: GoNoGoDecision | null;
+  scoringSimulation: ScoringSimulationResponse | null;
+  companyInfo: string;
 }
 
 const defaultState: AppState = {
@@ -31,6 +44,12 @@ const defaultState: AppState = {
   structuralAnalysis: '',
   outlineData: [],
   selectedChapter: null,
+  
+  tenderInfo: null,
+  riskAnalysis: null,
+  bidDecision: null,
+  scoringSimulation: null,
+  companyInfo: '',
 };
 
 export function useAppState() {
@@ -85,11 +104,37 @@ export function useAppState() {
       selectedChapter: chapter,
     }));
   }, []);
+  
+  // Bidding Agent Updates
+  const updateTenderInfo = useCallback((tenderInfo: TenderInfo) => {
+    setState((prev) => ({
+      ...prev,
+      tenderInfo,
+    }));
+  }, []);
+
+  const updateBiddingAnalysis = useCallback((data: {
+    riskAnalysis?: RiskAnalysisResponse;
+    bidDecision?: GoNoGoDecision;
+    scoringSimulation?: ScoringSimulationResponse;
+  }) => {
+    setState((prev) => ({
+      ...prev,
+      ...data,
+    }));
+  }, []);
+
+  const updateCompanyInfo = useCallback((info: string) => {
+    setState((prev) => ({
+      ...prev,
+      companyInfo: info,
+    }));
+  }, []);
 
   const nextStep = useCallback(() => {
     setState((prev) => ({
       ...prev,
-      currentStep: Math.min(prev.currentStep + 1, 2),
+      currentStep: Math.min(prev.currentStep + 1, 3), // Max step is now 3
     }));
   }, []);
 
@@ -108,8 +153,10 @@ export function useAppState() {
     updateAnalysisResults,
     updateOutline,
     updateSelectedChapter,
+    updateTenderInfo,
+    updateBiddingAnalysis,
+    updateCompanyInfo,
     nextStep,
     prevStep,
   };
 }
-

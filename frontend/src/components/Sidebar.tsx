@@ -8,7 +8,9 @@ import {
   PencilSquareIcon,
   Cog6ToothIcon,
   DocumentTextIcon,
-  ChartBarIcon
+  ChartBarIcon,
+  CloudArrowUpIcon,
+  ScaleIcon
 } from '@heroicons/react/24/outline';
 import ConfigPanel from './ConfigPanel';
 
@@ -22,9 +24,10 @@ export default function Sidebar({ currentStep, onStepClick, onConfigUpdate }: Si
   const [configOpen, setConfigOpen] = useState(false);
 
   const menuItems = [
-    { id: 0, name: '标书解析', icon: DocumentMagnifyingGlassIcon },
-    { id: 1, name: '目录编辑', icon: QueueListIcon },
-    { id: 2, name: '正文编辑', icon: PencilSquareIcon },
+    { id: 0, name: '标书解析', icon: CloudArrowUpIcon },
+    { id: 1, name: '投标决策', icon: ScaleIcon },
+    { id: 2, name: '目录编辑', icon: QueueListIcon },
+    { id: 3, name: '正文编辑', icon: PencilSquareIcon },
   ];
 
   return (
@@ -36,7 +39,7 @@ export default function Sidebar({ currentStep, onStepClick, onConfigUpdate }: Si
         </div>
         <div>
           <h1 className="text-white font-bold text-lg leading-tight">AI 标书助手</h1>
-          <p className="text-xs text-slate-500">Professional Edition</p>
+          <p className="text-xs text-slate-500">专业版</p>
         </div>
       </div>
 
@@ -125,4 +128,3 @@ export default function Sidebar({ currentStep, onStepClick, onConfigUpdate }: Si
     </div>
   );
 }
-

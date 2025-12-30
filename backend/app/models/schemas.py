@@ -109,5 +109,8 @@ class ErrorResponse(BaseModel):
 class WordExportRequest(BaseModel):
     """Word导出请求"""
     project_name: Optional[str] = Field(None, description="项目名称")
+    project_number: Optional[str] = Field(None, description="项目编号/招标编号")
+    bidder_name: Optional[str] = Field(None, description="投标人名称")
+    bid_date: Optional[str] = Field(None, description="投标日期")
     project_overview: Optional[str] = Field(None, description="项目概述")
     outline: List[OutlineItem] = Field(..., description="目录结构，包含内容")

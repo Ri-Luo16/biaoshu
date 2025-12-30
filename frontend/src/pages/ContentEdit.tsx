@@ -1,7 +1,7 @@
 /**
  * 内容编辑页面
  */
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { 
   DocumentArrowDownIcon, 
   MagnifyingGlassIcon,
@@ -14,10 +14,11 @@ import {
   SparklesIcon,
   GlobeAltIcon,
   ArrowPathIcon,
-  XMarkIcon
+  XMarkIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 import ReactMarkdown from 'react-markdown';
-import { searchFormatted, loadUrlContent, exportWord } from '../services/api';
+import { searchFormatted, loadUrlContent, exportWord, generateChapterContentStream } from '../services/api';
 import type { OutlineItem } from '../types';
 
 interface ContentEditProps {
@@ -25,6 +26,7 @@ interface ContentEditProps {
   selectedChapter: OutlineItem | null;
   projectOverview: string;
   onChapterSelect: (chapter: OutlineItem) => void;
+  onOutlineUpdate: (outline: OutlineItem[] | ((prev: OutlineItem[]) => OutlineItem[])) => void;
 }
 
 export default function ContentEdit({
@@ -32,10 +34,13 @@ export default function ContentEdit({
   selectedChapter,
   projectOverview,
   onChapterSelect,
+  onOutlineUpdate,
 }: ContentEditProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState('');
   
   // 搜索助手相关状态
   const [showSearchAssistant, setShowSearchAssistant] = useState(false);
@@ -43,6 +48,82 @@ export default function ContentEdit({
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState('');
   const [searchError, setSearchError] = useState('');
+
+  // 递归寻找当前章节的父章节和同级章节
+  const getChapterContext = useCallback(() => {
+    if (!selectedChapter) return { parents: [], siblings: [] };
+
+    let foundParents: OutlineItem[] = [];
+    let foundSiblings: OutlineItem[] = [];
+
+    const find = (items: OutlineItem[], parents: OutlineItem[] = []): boolean => {
+      for (const item of items) {
+        if (item.id === selectedChapter.id) {
+          foundParents = parents;
+          foundSiblings = items.filter(i => i.id !== selectedChapter.id);
+          return true;
+        }
+        if (item.children && find(item.children, [...parents, item])) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    find(outlineData);
+    return { parents: foundParents, siblings: foundSiblings };
+  }, [outlineData, selectedChapter]);
+
+  // 处理章节生成
+  const handleGenerateContent = async () => {
+    if (!selectedChapter) return;
+    
+    setIsGenerating(true);
+    setError('');
+    
+    const { parents, siblings } = getChapterContext();
+
+    generateChapterContentStream(
+      { id: selectedChapter.id, title: selectedChapter.title, description: selectedChapter.description },
+      parents.map(p => ({ id: p.id, title: p.title, description: p.description })),
+      siblings.map(s => ({ id: s.id, title: s.title, description: s.description })),
+      projectOverview,
+      (_chunk, fullContent) => {
+        // 更新大纲数据
+        onOutlineUpdate((prevData) => {
+          const update = (items: OutlineItem[]): OutlineItem[] => {
+            return items.map((i) => {
+              if (i.id === selectedChapter.id) return { ...i, content: fullContent };
+              if (i.children) return { ...i, children: update(i.children) };
+              return i;
+            });
+          };
+          return update(prevData);
+        });
+        
+        // 同时更新当前选中的章节对象，以便编辑器实时反映
+        onChapterSelect({ ...selectedChapter, content: fullContent });
+      },
+      (content) => {
+        onOutlineUpdate((prevData) => {
+          const update = (items: OutlineItem[]): OutlineItem[] => {
+            return items.map((i) => {
+              if (i.id === selectedChapter.id) return { ...i, content };
+              if (i.children) return { ...i, children: update(i.children) };
+              return i;
+            });
+          };
+          return update(prevData);
+        });
+        onChapterSelect({ ...selectedChapter, content });
+        setIsGenerating(false);
+      },
+      (err) => {
+        setError(`生成内容失败: ${err.message}`);
+        setIsGenerating(false);
+      }
+    );
+  };
 
   // 处理搜索
   const handleSearch = async () => {
@@ -229,7 +310,7 @@ export default function ContentEdit({
             <div className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
               <div className="flex items-center gap-4">
                 <div className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-mono font-bold text-slate-500">
-                  SECTION {selectedChapter.id}
+                  章节 {selectedChapter.id}
                 </div>
                 <h2 className="text-lg font-bold text-slate-800">{selectedChapter.title}</h2>
               </div>
@@ -252,29 +333,59 @@ export default function ContentEdit({
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-8 flex justify-center">
-              <div className="w-full max-w-4xl bg-white min-h-[1056px] shadow-sm border border-slate-200 rounded-lg p-12 lg:p-16">
-                {selectedChapter.content ? (
+            <div className="flex-1 overflow-y-auto p-8 flex flex-col items-center">
+              {error && (
+                <div className="w-full max-w-4xl mb-6 bg-rose-50 border border-rose-100 rounded-xl p-4 flex gap-3">
+                  <ExclamationTriangleIcon className="w-5 h-5 text-rose-500 shrink-0" />
+                  <p className="text-sm text-rose-700">{error}</p>
+                </div>
+              )}
+              
+              <div className="w-full max-w-4xl bg-white min-h-[1056px] shadow-sm border border-slate-200 rounded-lg p-12 lg:p-16 relative">
+                {selectedChapter.content || isGenerating ? (
                   isEditMode ? (
                     <textarea 
                       className="w-full h-full min-h-[800px] border-none focus:ring-0 text-slate-700 font-sans leading-relaxed resize-none p-0"
-                      defaultValue={selectedChapter.content}
+                      value={selectedChapter.content || ''}
+                      onChange={(e) => {
+                        const newContent = e.target.value;
+                        onOutlineUpdate((prevData) => {
+                          const update = (items: OutlineItem[]): OutlineItem[] => {
+                            return items.map((i) => {
+                              if (i.id === selectedChapter.id) return { ...i, content: newContent };
+                              if (i.children) return { ...i, children: update(i.children) };
+                              return i;
+                            });
+                          };
+                          return update(prevData);
+                        });
+                        onChapterSelect({ ...selectedChapter, content: newContent });
+                      }}
                       placeholder="在这里输入内容..."
                     />
                   ) : (
-                    <div className="prose prose-slate prose-sm md:prose-base max-w-none text-slate-700 leading-relaxed">
-                      <ReactMarkdown>{selectedChapter.content}</ReactMarkdown>
+                    <div className="prose prose-slate prose-sm md:prose-base max-w-none text-slate-700 leading-relaxed" translate="no">
+                      <ReactMarkdown>{selectedChapter.content || ''}</ReactMarkdown>
+                      {isGenerating && (
+                        <div className="flex items-center gap-2 mt-4 text-indigo-500 font-medium italic animate-pulse">
+                          <SparklesIcon className="w-4 h-4" />
+                          AI 正在思考并撰写中...
+                        </div>
+                      )}
                     </div>
                   )
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center text-slate-300 py-20">
                     <SparklesIcon className="w-20 h-20 mb-6 opacity-20" />
                     <p className="text-xl font-bold">该章节内容待生成</p>
-                    <p className="mt-2 text-slate-400">请返回“目录编辑”页面触发 AI 撰写</p>
+                    <p className="mt-2 text-slate-400">您可以直接让 AI 为您撰写专业内容</p>
                     <button 
-                      className="mt-8 px-6 py-2 bg-indigo-50 text-indigo-600 font-bold rounded-xl hover:bg-indigo-100 transition-colors"
+                      onClick={handleGenerateContent}
+                      disabled={isGenerating}
+                      className="mt-8 px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all active:scale-95 flex items-center gap-2"
                     >
-                      立即生成
+                      <SparklesIcon className="w-5 h-5" />
+                      立即生成专业内容
                     </button>
                   </div>
                 )}
@@ -346,7 +457,7 @@ export default function ContentEdit({
             
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
               {searchResults ? (
-                <div className="prose prose-slate prose-xs max-w-none text-slate-600">
+                <div className="prose prose-slate prose-xs max-w-none text-slate-600" translate="no">
                   <ReactMarkdown>{searchResults}</ReactMarkdown>
                 </div>
               ) : isSearching ? (

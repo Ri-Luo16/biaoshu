@@ -1,6 +1,6 @@
 """配置相关API路由"""
 from fastapi import APIRouter, HTTPException
-from ..models.schemas import ConfigRequest, ConfigResponse, ModelListResponse
+from ..models.schemas import ConfigRequest, ConfigResponse
 from ..services.openai_service import OpenAIService
 from ..utils.config_manager import config_manager
 
@@ -8,7 +8,7 @@ router = APIRouter(prefix="/api/config", tags=["配置管理"])
 
 
 @router.post("/save", response_model=ConfigResponse)
-async def save_config(config: ConfigRequest):
+async def save_config(config: ConfigRequest) -> ConfigResponse:
     """保存OpenAI配置"""
     try:
         success = config_manager.save_config(
@@ -17,28 +17,28 @@ async def save_config(config: ConfigRequest):
             model_name=config.model_name
         )
         
-        if success:
-            return ConfigResponse(success=True, message="配置保存成功")
-        else:
-            return ConfigResponse(success=False, message="配置保存失败")
+        return ConfigResponse(
+            success=success, 
+            message="配置保存成功" if success else "配置保存失败"
+        )
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"保存配置时发生错误: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"保存配置时发生错误: {e}")
 
 
 @router.get("/load")
-async def load_config():
+async def load_config() -> dict:
     """加载保存的配置"""
     try:
         config = config_manager.load_config()
         # 前端期望 {success: true, data: {...}} 格式
         return {"success": True, "data": config}
     except Exception as e:
-        return {"success": False, "message": f"加载配置时发生错误: {str(e)}"}
+        return {"success": False, "message": f"加载配置时发生错误: {e}"}
 
 
 @router.post("/models")
-async def get_available_models(config: ConfigRequest):
+async def get_available_models(config: ConfigRequest) -> dict:
     """获取可用的模型列表"""
     try:
         if not config.api_key:
@@ -79,5 +79,5 @@ async def get_available_models(config: ConfigRequest):
         return {
             "success": False,
             "data": [],
-            "message": f"获取模型列表失败: {str(e)}"
+            "message": f"获取模型列表失败: {e}"
         }

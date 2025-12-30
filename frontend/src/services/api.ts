@@ -2,7 +2,17 @@
  * API 服务
  */
 import axios from 'axios';
-import type { ApiConfig, UploadResponse, AnalysisResult, OutlineItem, ProjectType } from '../types';
+import type { 
+  ApiConfig, 
+  UploadResponse, 
+  AnalysisResult, 
+  OutlineItem, 
+  ProjectType,
+  TenderInfo,
+  RiskAnalysisResponse,
+  GoNoGoDecision,
+  ScoringSimulationResponse
+} from '../types';
 
 const API_BASE_URL = '/api';
 
@@ -73,6 +83,37 @@ export async function uploadExpandDocument(file: File): Promise<UploadResponse> 
     },
   });
 
+  return response.data;
+}
+
+// Bidding Agent APIs
+export async function parseTender(fileContent: string): Promise<TenderInfo> {
+  const response = await axios.post(`${API_BASE_URL}/bidding/parse`, {
+    file_content: fileContent
+  });
+  return response.data;
+}
+
+export async function analyzeRisk(fileContent: string): Promise<RiskAnalysisResponse> {
+  const response = await axios.post(`${API_BASE_URL}/bidding/risk-analysis`, {
+    file_content: fileContent
+  });
+  return response.data;
+}
+
+export async function analyzeBid(tenderInfo: TenderInfo, companyInfo: string): Promise<GoNoGoDecision> {
+  const response = await axios.post(`${API_BASE_URL}/bidding/analyze-bid`, {
+    tender_info: tenderInfo,
+    company_info: companyInfo
+  });
+  return response.data;
+}
+
+export async function simulateScoring(tenderInfo: TenderInfo, companyInfo: string): Promise<ScoringSimulationResponse> {
+  const response = await axios.post(`${API_BASE_URL}/bidding/scoring-simulation`, {
+    tender_info: tenderInfo,
+    company_info: companyInfo
+  });
   return response.data;
 }
 
@@ -509,10 +550,9 @@ export function generateChapterContentStream(
             try {
               const parsed = JSON.parse(data);
               if (parsed.status === 'streaming' && parsed.content) {
-                fullContent = parsed.full_content || fullContent;
+                fullContent += parsed.content;
                 onChunk(parsed.content, fullContent);
               } else if (parsed.status === 'completed') {
-                fullContent = parsed.content || fullContent;
                 onComplete(fullContent);
                 return;
               } else if (parsed.status === 'error') {

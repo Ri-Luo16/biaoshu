@@ -1,30 +1,23 @@
 """文件处理服务"""
-import aiofiles
-import os
-import time
+import asyncio
+import base64
 import gc
 import io
 import re
-import base64
 from datetime import datetime
-from typing import Optional, List, Dict, Tuple
-import PyPDF2
-import docx
-from fastapi import UploadFile
-import aiohttp
-import asyncio
-from ..config import settings
+from pathlib import Path
+from typing import Optional, List, Tuple
+from contextlib import suppress
 
-# 新增的第三方库
-try:
-    import pdfplumber
-    import fitz  # PyMuPDF
-    from docx2python import docx2python
-    from PIL import Image
-    HAS_ADVANCED_LIBS = True
-except ImportError as e:
-    HAS_ADVANCED_LIBS = False
-    print(f"高级文档处理库未安装: {e}")
+import aiofiles
+import aiohttp
+import docx
+import fitz  # PyMuPDF
+import pdfplumber
+from docx2python import docx2python
+from fastapi import UploadFile
+
+from ..config import settings
 
 
 class FileService:
@@ -38,7 +31,6 @@ class FileService:
     async def upload_image_to_server(image_data: bytes, filename: str) -> Optional[str]:
         """上传图片到外部服务器"""
         try:
-            # 准备multipart/form-data格式的数据
             form_data = aiohttp.FormData()
             form_data.add_field('file',
                               io.BytesIO(image_data),
@@ -50,561 +42,484 @@ class FileService:
                 async with session.post(FileService.IMAGE_UPLOAD_URL, data=form_data) as response:
                     if response.status == 200:
                         result = await response.json()
-                        # 根据实际API返回格式获取图片URL
                         return result.get('file_url')
-                    else:
-                        print(f"图片上传失败，状态码: {response.status}")
-                        return None
+                    print(f"图片上传失败，状态码: {response.status}")
+                    return None
         except Exception as e:
-            print(f"图片上传异常: {str(e)}")
+            print(f"图片上传异常: {e}")
             return None
 
     @staticmethod
-    def extract_images_from_pdf(file_path: str) -> List[Tuple[bytes, str, int, int]]:
+    def extract_images_from_pdf(file_path: str | Path) -> List[Tuple[bytes, str, int, int]]:
         """从PDF提取图片，返回 (图片数据, 扩展名, 页码, 图片索引) 列表"""
-        if not HAS_ADVANCED_LIBS:
-            return []
-
         images = []
         try:
-            doc = fitz.open(file_path)
-
-            for page_num in range(doc.page_count):
-                page = doc[page_num]
-                image_list = page.get_images(full=True)
-
-                for img_index, img in enumerate(image_list):
-                    try:
-                        # 获取图片数据
-                        xref = img[0]
-                        pix = fitz.Pixmap(doc, xref)
-
-                        # 转换为RGB格式（处理 Alpha 通道或 CMYK）
-                        if pix.n - pix.alpha < 4:
-                            # 如果有 Alpha 通道，先去除
-                            if pix.alpha:
-                                pix = fitz.Pixmap(fitz.csRGB, pix)
-                            img_data = pix.tobytes("jpeg")
-                            ext = "jpg"
-                        else:
-                            pix1 = fitz.Pixmap(fitz.csRGB, pix)
-                            img_data = pix1.tobytes("jpeg")
-                            ext = "jpg"
-                            pix1 = None
-
-                        pix = None
-                        images.append((img_data, ext, page_num + 1, img_index + 1))
-
-                    except Exception as e:
-                        print(f"提取PDF第{page_num+1}页图片{img_index+1}失败: {str(e)}")
-                        continue
-
-            doc.close()
+            with fitz.open(str(file_path)) as doc:
+                for page_num in range(doc.page_count):
+                    page = doc[page_num]
+                    for img_index, img in enumerate(page.get_images(full=True)):
+                        with suppress(Exception):
+                            xref = img[0]
+                            with fitz.Pixmap(doc, xref) as pix:
+                                # 转换为RGB格式（处理 Alpha 通道或 CMYK）
+                                if pix.n - pix.alpha < 4:
+                                    if pix.alpha:
+                                        with fitz.Pixmap(fitz.csRGB, pix) as pix_rgb:
+                                            img_data = pix_rgb.tobytes("jpeg")
+                                    else:
+                                        img_data = pix.tobytes("jpeg")
+                                else:
+                                    with fitz.Pixmap(fitz.csRGB, pix) as pix_rgb:
+                                        img_data = pix_rgb.tobytes("jpeg")
+                                
+                                images.append((img_data, "jpg", page_num + 1, img_index + 1))
             return images
-
         except Exception as e:
-            print(f"PDF图片提取失败: {str(e)}")
+            print(f"PDF图片提取失败: {e}")
             return []
 
     @staticmethod
-    def extract_images_from_docx(file_path: str) -> List[Tuple[bytes, str, int]]:
+    def extract_images_from_docx(file_path: str | Path) -> List[Tuple[bytes, str, int]]:
         """从Word文档提取图片，返回 (图片数据, 扩展名, 图片索引) 列表"""
         images = []
-        doc = None
         try:
-            doc = docx.Document(file_path)
-
-            # 获取文档中的所有关系
+            doc = docx.Document(str(file_path))
             rels = doc.part.rels
             img_index = 0
 
             for rel in rels.values():
                 if "image" in rel.target_ref:
-                    try:
-                        # 读取图片数据
+                    with suppress(Exception):
                         img_data = rel.target_part.blob
-
-                        # 根据content_type确定扩展名
                         content_type = rel.target_part.content_type
-                        if 'jpeg' in content_type:
-                            ext = 'jpg'
-                        elif 'png' in content_type:
-                            ext = 'png'
-                        elif 'gif' in content_type:
-                            ext = 'gif'
-                        elif 'bmp' in content_type:
-                            ext = 'bmp'
-                        else:
-                            ext = 'jpg'  # 默认
+                        ext = 'jpg'
+                        if 'png' in content_type: ext = 'png'
+                        elif 'gif' in content_type: ext = 'gif'
+                        elif 'bmp' in content_type: ext = 'bmp'
 
                         img_index += 1
                         images.append((img_data, ext, img_index))
-
-                    except Exception as e:
-                        print(f"提取Word文档图片{img_index+1}失败: {str(e)}")
-                        continue
-
-            if doc:
-                del doc
-            gc.collect()
             return images
-
         except Exception as e:
-            if doc:
-                del doc
-            gc.collect()
-            print(f"Word文档图片提取失败: {str(e)}")
+            print(f"Word文档图片提取失败: {e}")
             return []
 
     @staticmethod
-    def _safe_file_cleanup(file_path: str, max_retries: int = 3) -> bool:
+    def _safe_file_cleanup(file_path: str | Path, max_retries: int = 3) -> bool:
         """安全删除文件，带重试机制"""
+        path = Path(file_path)
         for attempt in range(max_retries):
             try:
-                if os.path.exists(file_path):
-                    # 强制垃圾回收，释放可能的文件句柄
+                if path.exists():
                     gc.collect()
-                    time.sleep(0.1 * (attempt + 1))  # 递增延迟
-                    os.remove(file_path)
+                    path.unlink()
                 return True
-            except OSError as e:
+            except Exception as e:
                 if attempt == max_retries - 1:
                     print(f"无法删除文件 {file_path}: {e}")
                     return False
-                time.sleep(0.5)  # 等待后重试
+                # asyncio.run 在非异步上下文中使用是安全的
+                asyncio.run(asyncio.sleep(0.5))
         return True
     
     @staticmethod
-    async def save_uploaded_file(file: UploadFile) -> str:
-        """保存上传的文件并返回文件路径"""
-        # 创建上传目录
-        os.makedirs(settings.upload_dir, exist_ok=True)
+    async def save_uploaded_file(file: UploadFile) -> Path:
+        """保存上传的文件并返回文件路径（支持MD5去重）"""
+        import hashlib
+        
+        upload_dir = Path(settings.upload_dir)
+        upload_dir.mkdir(parents=True, exist_ok=True)
 
-        # 生成带时间戳的文件名，防止重复
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # 精确到毫秒
-        filename = file.filename or "unknown_file"
+        # 读取文件内容计算 MD5
+        content = await file.read()
+        file_md5 = hashlib.md5(content).hexdigest()
+        
+        # 恢复文件指针供后续读取（如果需要）
+        # 但这里我们直接用 read 出来的 content 写入，所以不需要 seek
+        # 注意：如果 content 很大，这种方式可能会占内存。但在 FastAPI 中 UploadFile 已经是 SpooledTemporaryFile
+        
+        filename = Path(file.filename or "unknown_file")
+        # 使用 MD5 作为文件名的一部分，或者建立映射
+        # 这里为了简单直观，保留原名但检查是否存在相同 MD5 的文件
+        
+        # 简单策略：文件名格式变为 {md5}_{filename}
+        # 这样如果同一个文件上传，文件名是一样的
+        safe_filename = f"{file_md5}_{filename.name}"
+        file_path = upload_dir / safe_filename
+        
+        if file_path.exists():
+            print(f"文件已存在 (MD5命中): {file_path}")
+            return file_path
 
-        # 分离文件名和扩展名
-        name, ext = os.path.splitext(filename)
-
-        # 生成新的文件名：原文件名_时间戳.扩展名
-        new_filename = f"{name}_{timestamp}{ext}"
-        file_path = os.path.join(settings.upload_dir, new_filename)
-
-        # 异步保存文件
         async with aiofiles.open(file_path, 'wb') as f:
-            content = await file.read()
             await f.write(content)
 
         return file_path
     
     @staticmethod
-    async def extract_text_from_pdf(file_path: str) -> str:
-        """从PDF文件提取文本，优先使用 fitz (PyMuPDF) 以获得更好的布局支持"""
-        if not HAS_ADVANCED_LIBS:
-            return FileService._extract_pdf_with_pypdf2(file_path)
-            
+    async def extract_text_from_pdf(file_path: str | Path) -> str:
+        """从PDF文件提取文本"""
         try:
-            # 优先尝试 fitz (PyMuPDF)，它对文本提取非常快且准确
             text = await FileService._extract_pdf_with_pymupdf(file_path)
-            
-            # 如果 fitz 提取的内容太少，尝试 pdfplumber (对表格支持更好)
             if len(text.strip()) < 200:
                 plumber_text = await FileService._extract_pdf_with_pdfplumber(file_path)
                 if len(plumber_text.strip()) > len(text.strip()):
                     text = plumber_text
-            
             return text
         except Exception as e:
             print(f"高级 PDF 提取失败，尝试基础提取: {e}")
-            try:
+            with suppress(Exception):
                 return await FileService._extract_pdf_with_pdfplumber(file_path)
-            except:
-                return FileService._extract_pdf_with_pypdf2(file_path)
+            return FileService._extract_pdf_with_pypdf2(file_path)
     
     @staticmethod
-    async def _extract_pdf_with_pdfplumber(file_path: str) -> str:
-        """使用pdfplumber提取PDF文本，包含表格和图片（确保及时释放文件句柄）"""
+    async def _extract_pdf_with_pdfplumber(file_path: str | Path) -> str:
+        """使用pdfplumber提取PDF文本"""
         try:
             extracted_text = []
-            image_references = []  # 存储图片引用映射
+            image_references = []
             global_img_counter = 1
 
-            # 获取PDF文档的所有图片信息，用于后续匹配
             all_images = FileService.extract_images_from_pdf(file_path)
             page_images_map = {}
-            if all_images:
-                for img_data, ext, page_num, img_index in all_images:
-                    if page_num not in page_images_map:
-                        page_images_map[page_num] = []
-                    page_images_map[page_num].append((img_data, ext, img_index))
+            for img_data, ext, page_num, img_index in all_images:
+                page_images_map.setdefault(page_num, []).append((img_data, ext, img_index))
 
-            # 使用上下文管理器，避免在Windows上产生文件锁
-            with pdfplumber.open(file_path) as pdf:
+            with pdfplumber.open(str(file_path)) as pdf:
                 for page_num, page in enumerate(pdf.pages, 1):
-                    # 添加页码标识
                     extracted_text.append(f"\n--- 第 {page_num} 页 ---\n")
-
-                    # 提取普通文本
-                    text = page.extract_text()
-                    if text:
-                        # 检查文本中是否有图片标记
-                        import re
+                    if text := page.extract_text():
                         img_pattern = r'----.*?(?:image|img|media).*?----'
                         img_matches = list(re.finditer(img_pattern, text, re.IGNORECASE))
 
-                        if img_matches and page_num in page_images_map:
-                            # 按顺序处理页面中的图片
-                            page_images = page_images_map[page_num]
+                        if img_matches and (page_images := page_images_map.get(page_num)):
                             processed_text = text
-
-                            for i, match in enumerate(img_matches):
-                                if i < len(page_images):
-                                    # 获取对应的图片数据
-                                    img_data, ext, img_index = page_images[i]
-                                    filename = f"pdf_page{page_num}_img{img_index}.{ext}"
-
-                                    # 上传图片
-                                    image_url = await FileService.upload_image_to_server(img_data, filename)
-
-                                    if image_url:
-                                        # 替换图片标记
-                                        old_mark = match.group()
-                                        new_mark = f"[图片{global_img_counter}]"
-                                        processed_text = processed_text.replace(old_mark, new_mark, 1)
-
-                                        # 记录图片引用
+                            for match in img_matches:
+                                if global_img_counter - 1 < len(page_images):
+                                    img_data, ext, img_index = page_images[global_img_counter - 1]
+                                    img_name = f"pdf_p{page_num}_i{img_index}.{ext}"
+                                    if image_url := await FileService.upload_image_to_server(img_data, img_name):
+                                        processed_text = processed_text.replace(match.group(), f"[图片{global_img_counter}]", 1)
                                         image_references.append(f"[图片{global_img_counter}]: {image_url}")
                                         global_img_counter += 1
-
                             extracted_text.append(processed_text)
                         else:
                             extracted_text.append(text)
 
-                    # 提取表格
-                    tables = page.extract_tables()
-                    if tables:
+                    if tables := page.extract_tables():
                         for table_num, table in enumerate(tables, 1):
                             extracted_text.append(f"\n[表格 {table_num}]")
                             for row in table:
-                                if row:  # 跳过空行
-                                    # 过滤空值并连接单元格
-                                    row_text = " | ".join([str(cell) if cell else "" for cell in row])
-                                    extracted_text.append(row_text)
+                                if row:
+                                    extracted_text.append(" | ".join(str(c) if c else "" for c in row))
                             extracted_text.append("[表格结束]\n")
 
-            # 在文档末尾添加图片引用映射
             if image_references:
-                extracted_text.append(f"\n\n--- 图片引用 ---")
-                extracted_text.extend(image_references)
+                extracted_text.extend(["\n\n--- 图片引用 ---", *image_references])
 
             result = "\n".join(extracted_text).strip()
-            gc.collect()
             
-            # 如果提取到的文字极少，且有大量图片，则可能是扫描件
-            if len(result.replace(f"--- 第", "").strip()) < 100 and len(all_images) > 0:
-                # 尝试使用 fitz 强制提取一次（有时候 fitz 更好）
+            if len(result.replace("--- 第", "").strip()) < 100 and all_images:
                 fitz_text = await FileService._extract_pdf_with_pymupdf(file_path)
                 if len(fitz_text) > len(result):
                     return fitz_text
 
             return result
         except Exception as e:
-            gc.collect()
-            # 如果pdfplumber失败，尝试PyMuPDF
-            try:
+            with suppress(Exception):
                 return await FileService._extract_pdf_with_pymupdf(file_path)
-            except Exception:
-                raise Exception(f"PDF文件读取失败: {str(e)}")
+            raise Exception(f"PDF文件读取失败: {e}") from e
     
     @staticmethod
-    async def _extract_pdf_with_pymupdf(file_path: str) -> str:
+    async def _extract_pdf_with_pymupdf(file_path: str | Path) -> str:
         """使用PyMuPDF提取PDF文本和图片"""
         try:
-            doc = fitz.open(file_path)
             extracted_text = []
-            
-            for page_num in range(doc.page_count):
-                page = doc[page_num]
-                extracted_text.append(f"\n--- 第 {page_num + 1} 页 ---\n")
-                
-                # 提取文本，使用 sort=True 确保阅读顺序正确
-                text = page.get_text("text", sort=True)
-                if text:
-                    extracted_text.append(text)
-                
-                # 尝试提取表格
-                try:
-                    tabs = page.find_tables()
-                    if tabs and tabs.tables:
-                        for table_num, table in enumerate(tabs.tables, 1):
-                            extracted_text.append(f"\n[表格 {table_num}]")
-                            table_data = table.extract()
-                            for row in table_data:
-                                if row:
-                                    row_text = " | ".join([str(cell) if cell else "" for cell in row])
-                                    extracted_text.append(row_text)
-                            extracted_text.append("[表格结束]\n")
-                except Exception as te:
-                    # 如果表格提取失败，跳过
-                    print(f"Fitz 表格提取失败: {te}")
-                    pass
-            
-            doc.close()
+            with fitz.open(str(file_path)) as doc:
+                for page_num in range(doc.page_count):
+                    page = doc[page_num]
+                    extracted_text.append(f"\n--- 第 {page_num + 1} 页 ---\n")
+                    if text := page.get_text("text", sort=True):
+                        extracted_text.append(text)
+                    
+                    with suppress(Exception):
+                        if tabs := page.find_tables():
+                            for table_num, table in enumerate(tabs.tables, 1):
+                                extracted_text.append(f"\n[表格 {table_num}]")
+                                for row in table.extract():
+                                    if row:
+                                        extracted_text.append(" | ".join(str(c) if c else "" for c in row))
+                                extracted_text.append("[表格结束]\n")
             return "\n".join(extracted_text).strip()
         except Exception as e:
-            raise Exception(f"PyMuPDF 提取失败: {str(e)}")
+            raise Exception(f"PyMuPDF 提取失败: {e}") from e
     
     @staticmethod 
-    def _extract_pdf_with_pypdf2(file_path: str) -> str:
+    def _extract_pdf_with_pypdf2(file_path: str | Path) -> str:
         """使用PyPDF2提取PDF文本（原方法）"""
         try:
-            with open(file_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                text = ""
-                for page in pdf_reader.pages:
-                    text += page.extract_text() + "\n"
-                return text.strip()
+            import PyPDF2
+            with open(file_path, 'rb') as f:
+                reader = PyPDF2.PdfReader(f)
+                return "\n".join(p.extract_text() for p in reader.pages).strip()
         except Exception as e:
-            raise Exception(f"PDF文件读取失败: {str(e)}")
+            raise Exception(f"PDF文件读取失败: {e}") from e
     
     @staticmethod
-    async def extract_text_from_docx(file_path: str) -> str:
-        """从Word文档提取文本，支持表格内容和图片"""
-        if HAS_ADVANCED_LIBS:
+    async def extract_text_from_docx(file_path: str | Path) -> str:
+        """从Word文档提取文本 (增强版)"""
+        try:
+            # 1. 尝试使用 docx2python
             return await FileService._extract_docx_with_docx2python(file_path)
-        else:
-            # 降级到原来的python-docx方法，但增强表格处理
-            return await FileService._extract_docx_with_python_docx(file_path)
+        except Exception as e1:
+            print(f"docx2python 提取失败: {e1}")
+            try:
+                # 2. 尝试使用 python-docx
+                return await FileService._extract_docx_with_python_docx(file_path)
+            except Exception as e2:
+                print(f"python-docx 提取失败: {e2}")
+                # 3. 尝试使用 win32com (仅限 Windows，处理 .doc 或 伪装 .docx)
+                try:
+                    return await FileService._extract_word_with_win32com(file_path)
+                except Exception as e3:
+                    print(f"win32com 提取失败: {e3}")
+                    raise Exception(f"Word 文档解析全面失败。请检查文件是否损坏或加密。")
+
+    @staticmethod
+    async def _extract_word_with_win32com(file_path: str | Path) -> str:
+        """使用 win32com 调用 Word 应用程序提取文本 (Windows Only)"""
+        import win32com.client
+        import pythoncom
+        from pathlib import Path
+        
+        # 初始化 COM 库 (在异步线程中是必须的)
+        pythoncom.CoInitialize()
+        
+        word = None
+        doc = None
+        abs_path = str(Path(file_path).resolve())
+        
+        try:
+            word = win32com.client.Dispatch("Word.Application")
+            word.Visible = False
+            word.DisplayAlerts = 0
+            
+            doc = word.Documents.Open(abs_path, ReadOnly=True)
+            text = doc.Range().Text
+            
+            # 简单的清理
+            text = text.replace('\r', '\n').strip()
+            return text
+            
+        except Exception as e:
+            raise e
+        finally:
+            if doc:
+                try: doc.Close(0) # 0=wdDoNotSaveChanges
+                except: pass
+            if word:
+                try: word.Quit()
+                except: pass
+            pythoncom.CoUninitialize()
     
     @staticmethod
-    async def _extract_docx_with_docx2python(file_path: str) -> str:
-        """使用docx2python提取Word文档内容和图片（确保及时释放文件句柄）"""
+    async def _extract_docx_with_docx2python(file_path: str | Path) -> str:
+        """使用docx2python提取Word文档内容"""
         try:
             extracted_text = []
-            image_references = []  # 存储图片引用映射
+            image_references = []
             global_img_counter = 1
-
-            # 获取Word文档的所有图片信息
             all_images = FileService.extract_images_from_docx(file_path)
 
-            # 使用上下文管理器确保文件及时关闭，避免Windows上的锁定
-            with docx2python(file_path) as content:
-                # 处理文档内容
+            with docx2python(str(file_path)) as content:
                 if hasattr(content, 'document'):
                     for section in content.document:
                         for element in section:
                             if isinstance(element, list):
-                                # 这可能是表格
                                 extracted_text.append("\n[表格内容]")
                                 for row in element:
                                     if isinstance(row, list):
-                                        row_text = " | ".join([str(cell).strip() for cell in row if cell])
-                                        if row_text:
-                                            extracted_text.append(row_text)
+                                        row_text = " | ".join(str(c).strip() for c in row if c)
+                                        if row_text: extracted_text.append(row_text)
                                     else:
                                         extracted_text.append(str(row))
                                 extracted_text.append("[表格结束]\n")
                             else:
-                                # 普通文本，检查是否包含图片标记
                                 text = str(element).strip()
                                 if text:
-                                    # 检查文本中是否有图片标记
-                                    import re
-                                    img_pattern = r'----.*?(?:image|img|media).*?----'
-                                    img_matches = list(re.finditer(img_pattern, text, re.IGNORECASE))
-
+                                    img_matches = list(re.finditer(r'----.*?(?:image|img|media).*?----', text, re.IGNORECASE))
                                     if img_matches and all_images:
                                         processed_text = text
-
                                         for match in img_matches:
                                             if global_img_counter <= len(all_images):
-                                                # 获取对应的图片数据
-                                                img_data, ext, img_index = all_images[global_img_counter - 1]
-                                                filename = f"docx_img{global_img_counter}.{ext}"
-
-                                                # 上传图片
-                                                image_url = await FileService.upload_image_to_server(img_data, filename)
-
-                                                if image_url:
-                                                    # 替换图片标记
-                                                    old_mark = match.group()
-                                                    new_mark = f"[图片{global_img_counter}]"
-                                                    processed_text = processed_text.replace(old_mark, new_mark, 1)
-
-                                                    # 记录图片引用
-                                                    image_references.append(f"[图片{global_img_counter}]: {image_url}")
+                                                img_data, ext, _ = all_images[global_img_counter - 1]
+                                                if url := await FileService.upload_image_to_server(img_data, f"docx_i{global_img_counter}.{ext}"):
+                                                    processed_text = processed_text.replace(match.group(), f"[图片{global_img_counter}]", 1)
+                                                    image_references.append(f"[图片{global_img_counter}]: {url}")
                                                     global_img_counter += 1
-
                                         extracted_text.append(processed_text)
                                     else:
                                         extracted_text.append(text)
 
-            # 在文档末尾添加图片引用映射
             if image_references:
-                extracted_text.append(f"\n\n--- 图片引用 ---")
-                extracted_text.extend(image_references)
+                extracted_text.extend(["\n\n--- 图片引用 ---", *image_references])
 
-            result = "\n".join(extracted_text).strip()
-            gc.collect()
-            return result
-        except Exception as e:
-            gc.collect()
-            # 如果docx2python失败，回退到增强的python-docx
-            try:
-                return await FileService._extract_docx_with_python_docx(file_path)
-            except Exception:
-                raise Exception(f"Word文档读取失败: {str(e)}")
+            return "\n".join(extracted_text).strip()
+        except Exception:
+            return await FileService._extract_docx_with_python_docx(file_path)
     
     @staticmethod
-    async def _extract_docx_with_python_docx(file_path: str) -> str:
-        """使用python-docx提取Word文档内容和图片（增强版）"""
-        doc = None
+    async def _extract_docx_with_python_docx(file_path: str | Path) -> str:
+        """使用python-docx提取Word文档内容"""
         try:
-            doc = docx.Document(file_path)
+            doc = docx.Document(str(file_path))
             extracted_text = []
-            image_references = []  # 存储图片引用映射
+            image_references = []
             global_img_counter = 1
-
-            # 获取Word文档的所有图片信息
             all_images = FileService.extract_images_from_docx(file_path)
 
-            # 提取段落文本，同时处理图片
             for paragraph in doc.paragraphs:
-                text = paragraph.text.strip()
-                if text:
-                    # 检查文本中是否有图片标记
-                    import re
-                    img_pattern = r'----.*?(?:image|img|media).*?----'
-                    img_matches = list(re.finditer(img_pattern, text, re.IGNORECASE))
-
+                if text := paragraph.text.strip():
+                    img_matches = list(re.finditer(r'----.*?(?:image|img|media).*?----', text, re.IGNORECASE))
                     if img_matches and all_images:
                         processed_text = text
-
                         for match in img_matches:
                             if global_img_counter <= len(all_images):
-                                # 获取对应的图片数据
-                                img_data, ext, img_index = all_images[global_img_counter - 1]
-                                filename = f"docx_img{global_img_counter}.{ext}"
-
-                                # 上传图片
-                                image_url = await FileService.upload_image_to_server(img_data, filename)
-
-                                if image_url:
-                                    # 替换图片标记
-                                    old_mark = match.group()
-                                    new_mark = f"[图片{global_img_counter}]"
-                                    processed_text = processed_text.replace(old_mark, new_mark, 1)
-
-                                    # 记录图片引用
-                                    image_references.append(f"[图片{global_img_counter}]: {image_url}")
+                                img_data, ext, _ = all_images[global_img_counter - 1]
+                                if url := await FileService.upload_image_to_server(img_data, f"docx_i{global_img_counter}.{ext}"):
+                                    processed_text = processed_text.replace(match.group(), f"[图片{global_img_counter}]", 1)
+                                    image_references.append(f"[图片{global_img_counter}]: {url}")
                                     global_img_counter += 1
-
                         extracted_text.append(processed_text)
                     else:
                         extracted_text.append(text)
 
-            # 提取表格内容
             for table_num, table in enumerate(doc.tables, 1):
                 extracted_text.append(f"\n[表格 {table_num}]")
                 for row in table.rows:
-                    row_data = []
-                    for cell in row.cells:
-                        cell_text = cell.text.strip()
-                        row_data.append(cell_text if cell_text else "")
-                    row_text = " | ".join(row_data)
-                    if row_text.strip():
-                        extracted_text.append(row_text)
+                    row_text = " | ".join(c.text.strip() for c in row.cells if c.text.strip())
+                    if row_text: extracted_text.append(row_text)
                 extracted_text.append("[表格结束]\n")
 
-            # 在文档末尾添加图片引用映射
             if image_references:
-                extracted_text.append(f"\n\n--- 图片引用 ---")
-                extracted_text.extend(image_references)
+                extracted_text.extend(["\n\n--- 图片引用 ---", *image_references])
 
-            result = "\n".join(extracted_text).strip()
-
-            # 确保释放资源
-            if doc:
-                del doc
-            gc.collect()
-
-            return result
+            return "\n".join(extracted_text).strip()
         except Exception as e:
-            # 确保释放资源
-            if doc:
-                del doc
-            gc.collect()
-            raise Exception(f"Word文档读取失败: {str(e)}")
+            raise Exception(f"Word文档读取失败: {e}") from e
     
     @staticmethod
-    async def process_uploaded_file(file: UploadFile) -> Tuple[str, str]:
+    async def process_vectorization_background(text: str, file_path: Path):
+        """后台异步处理向量化任务"""
+        try:
+            from .milvus_service import MilvusService
+            from langchain_text_splitters import RecursiveCharacterTextSplitter
+            
+            print(f"后台任务启动: 开始为 {file_path.name} 进行向量化...")
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=200,
+                separators=["\n\n", "\n", "。", "！", "？", " ", ""]
+            )
+            chunks = text_splitter.split_text(text)
+            
+            if not chunks:
+                print("文档内容过少，跳过向量化")
+                return
+
+            milvus_service = MilvusService()
+            await milvus_service.add_documents(
+                texts=chunks,
+                metadatas=[{"source": str(file_path.name), "path": str(file_path)}] * len(chunks)
+            )
+            print(f"后台任务完成: {len(chunks)} 个片段已存入 Milvus")
+        except Exception as e:
+            print(f"后台向量化任务失败: {e}")
+
+    @staticmethod
+    async def process_uploaded_file(file: UploadFile, background_tasks = None) -> Tuple[str, str]:
         """处理上传的文件并提取文本内容，返回 (文本内容, 文件URL)"""
-        # 记录处理开始
         print(f"开始处理文件: {file.filename}, 类型: {file.content_type}")
         
-        # 检查文件大小
+        # 1. 计算 MD5 并保存文件 (去重)
+        import hashlib
         content = await file.read()
-        file_size = len(content)
-        if file_size > settings.max_file_size:
+        if len(content) > settings.max_file_size:
             raise Exception(f"文件大小超过限制 ({settings.max_file_size / 1024 / 1024}MB)")
         
-        # 重置文件指针
-        await file.seek(0)
+        file_md5 = hashlib.md5(content).hexdigest()
+        filename = Path(file.filename or "unknown_file")
+        safe_filename = f"{file_md5}_{filename.name}"
         
-        # 保存文件
-        file_path = await FileService.save_uploaded_file(file)
-        print(f"文件已保存至: {file_path}")
+        upload_dir = Path(settings.upload_dir)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        file_path = upload_dir / safe_filename
         
-        file_url = f"/api/uploads/{os.path.basename(file_path)}"
-        
-        try:
-            # 根据文件类型提取文本和图片
-            text = ""
-            filename_lower = (file.filename or "").lower()
+        # 检查是否已存在
+        is_existing_file = False
+        if file_path.exists():
+            print(f"文件已存在 (MD5命中): {file_path}")
+            is_existing_file = True
+        else:
+            async with aiofiles.open(file_path, 'wb') as f:
+                await f.write(content)
+            print(f"文件已保存至: {file_path}")
             
-            # 扩展支持的文件类型检测（内容类型 + 后缀名）
+        file_url = f"/api/uploads/{safe_filename}"
+        
+        # 2. 检查是否有缓存的解析结果
+        # 我们约定：解析后的文本保存在 {filename}.txt 中
+        cache_path = file_path.with_suffix(file_path.suffix + ".txt")
+        
+        if is_existing_file and cache_path.exists():
+            print(f"发现缓存的解析结果，直接使用: {cache_path}")
+            async with aiofiles.open(cache_path, 'r', encoding='utf-8') as f:
+                text = await f.read()
+            # 如果缓存存在，说明之前肯定也做过向量化了（或者正在做），这里可以跳过
+            print(f"缓存命中，跳过提取和向量化。字数: {len(text)}")
+            return text, file_url
+
+        try:
+            filename_lower = (file.filename or "").lower()
             is_pdf = file.content_type == "application/pdf" or filename_lower.endswith(".pdf")
             is_docx = (file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or 
-                       filename_lower.endswith(".docx") or 
-                       filename_lower.endswith(".docm"))
+                       filename_lower.endswith((".docx", ".docm")))
             is_doc = file.content_type == "application/msword" or filename_lower.endswith(".doc")
             is_image = (file.content_type and file.content_type.startswith("image/")) or filename_lower.endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp'))
             
             needs_new_file = False
+            text = ""
             
             if is_pdf:
                 print("检测到 PDF 文件，开始提取...")
+                # 1. 尝试快速提取文本层
                 text = await FileService.extract_text_from_pdf(file_path)
                 
-                # 强化扫描件检测：如果纯文本内容极少（去重页码后）
-                cleaned_text = re.sub(r'--- 第 \d+ 页 ---', '', text).strip()
-                if len(cleaned_text) < 20:
-                    print("检测到可能是扫描件，尝试 OCR 识别...")
-                    try:
-                        text = await FileService.perform_ocr_on_pdf(file_path)
-                        if not text.strip():
-                            raise Exception("该 PDF 文件无法提取文字内容，OCR 识别也未能获取到文字。")
+                # 2. 智能判定是否需要 OCR
+                clean_text = re.sub(r'\s+', '', text)
+                
+                if len(clean_text) > 100:
+                    print(f"PDF 文本层提取成功，有效字数: {len(clean_text)}，跳过 OCR。")
+                else:
+                    print(f"PDF 文本层提取内容过少 ({len(clean_text)} 字)，判定为扫描件或纯图片，启动 OCR...")
+                    ocr_text = await FileService.perform_ocr_on_pdf(file_path)
+                    if len(ocr_text) > len(text):
+                        text = ocr_text
                         needs_new_file = True
-                    except Exception as e:
-                        raise Exception(f"OCR 识别失败: {str(e)}。请确保您配置了支持视觉能力的模型。")
             
             elif is_docx:
                 print("检测到 Word (Docx) 文件，开始提取...")
                 text = await FileService.extract_text_from_docx(file_path)
                 if not text.strip():
-                    # 检查是否包含图片
-                    images = FileService.extract_images_from_docx(file_path)
-                    if images:
+                    if images := FileService.extract_images_from_docx(file_path):
                         print("检测到 Word 文档包含图片但无文字，尝试对图片进行 OCR...")
                         ocr_texts = []
                         from .openai_service import OpenAIService
                         openai_service = OpenAIService()
-                        for img_data, ext, idx in images:
+                        for i, (img_data, _, _) in enumerate(images, 1):
                             base64_img = base64.b64encode(img_data).decode('utf-8')
-                            img_text = await openai_service.ocr_image(base64_img)
-                            if img_text:
-                                ocr_texts.append(f"--- 图片 {idx} (OCR) ---\n{img_text}")
+                            if img_text := await openai_service.ocr_image(base64_img):
+                                ocr_texts.append(f"--- 图片 {i} (OCR) ---\n{img_text}")
                         
                         if ocr_texts:
                             text = "\n\n".join(ocr_texts)
@@ -612,147 +527,140 @@ class FileService:
                         else:
                             raise Exception("该 Word 文档仅包含图片，且 OCR 识别未能提取到文字。")
                     else:
-                        raise Exception("未能从该 Word 文档中提取到任何文字内容。请检查文件是否损坏或为空。")
+                        raise Exception("未能从该 Word 文档中提取到任何文字内容。")
             
             elif is_doc:
-                raise Exception("暂不支持旧版 Word (.doc) 格式。请先在 Word 中将其“另存为” .docx 格式后再上传。")
+                raise Exception("暂不支持旧版 Word (.doc) 格式。请将其转换为 .docx 格式后再上传。")
             
             elif is_image:
                 print(f"检测到图片文件: {file.filename}，开始 OCR 识别...")
-                text = await FileService.perform_ocr_on_image(file_path)
-                if not text.strip():
+                if text := await FileService.perform_ocr_on_image(file_path):
+                    needs_new_file = True
+                else:
                     raise Exception("无法从该图片中提取文字内容，OCR 识别结果为空。")
-                needs_new_file = True
             
             else:
-                print(f"不支持的文件类型: {file.content_type}")
-                raise Exception("不支持的文件类型，请上传 PDF、Word (.docx) 或图片文档")
+                raise Exception(f"不支持的文件类型: {file.content_type}")
 
-            # 如果提取到的内容为空（且没有触发上面的提示），抛出异常
             if not text or not text.strip():
-                raise Exception("无法从该文件中提取文字内容，请确保文件包含可读文本。")
+                raise Exception("无法从该文件中提取文字内容。")
 
-            # 如果是通过 OCR 识别的（或者是图片），生成一个新的 PDF 文件以便前端展示
             if needs_new_file:
-                new_pdf_filename = f"ocr_{os.path.basename(file_path)}.pdf"
-                new_pdf_path = os.path.join(settings.upload_dir, new_pdf_filename)
+                new_pdf_name = f"ocr_{file_path.name}.pdf"
+                new_pdf_path = Path(settings.upload_dir) / new_pdf_name
                 await FileService.generate_pdf_from_text(text, new_pdf_path)
-                file_url = f"/api/uploads/{new_pdf_filename}"
+                file_url = f"/api/uploads/{new_pdf_name}"
                 print(f"已生成 OCR 结果 PDF: {new_pdf_path}")
 
             print(f"文件提取成功，字数: {len(text)}")
             
-            # 注意：不再自动删除文件，以便前端通过 URL 访问
-            # FileService._safe_file_cleanup(file_path)
+            # 3. 保存解析结果到缓存文件
+            try:
+                async with aiofiles.open(cache_path, 'w', encoding='utf-8') as f:
+                    await f.write(text)
+                print(f"解析结果已缓存至: {cache_path}")
+            except Exception as e:
+                print(f"缓存写入失败: {e}")
 
+            # 将耗时的向量化操作移入后台任务
+            if background_tasks:
+                background_tasks.add_task(FileService.process_vectorization_background, text, file_path)
+                print("已将向量化任务加入后台队列")
+            
             return text, file_url
 
         except Exception as e:
-            # 异常情况下尝试清理文件
-            if 'file_path' in locals():
+            # 注意：如果不删除文件，下次上传相同文件可能会因为找不到缓存而再次失败，
+            # 但如果文件本身有问题，删除它是对的。
+            # 如果是 existing_file，我们不应该删除它，因为它可能在其他地方被引用
+            if 'file_path' in locals() and not is_existing_file:
                 FileService._safe_file_cleanup(file_path)
             raise e
 
     @staticmethod
-    async def generate_pdf_from_text(text: str, output_path: str):
+    async def generate_pdf_from_text(text: str, output_path: str | Path) -> None:
         """将文字内容生成 PDF 文件"""
         try:
-            doc = fitz.open()
-            page = doc.new_page()
-            
-            # 设置中文字体（使用 fitz 默认的中文字体名称）
-            font_name = "china-s" # PyMuPDF 的默认简中字体
-            
-            # 分行处理文本
-            lines = text.split("\n")
-            y_offset = 50
-            margin = 50
-            page_width = page.rect.width
-            page_height = page.rect.height
-            line_height = 15
-            font_size = 10
-            
-            # 估计字符宽度（中文字符大约占据 font_size * 0.8 的宽度）
-            chars_per_line = int((page_width - 2 * margin) / (font_size * 0.8))
-            
-            for line in lines:
-                if not line.strip():
-                    y_offset += line_height
-                    continue
-                    
-                # 简单的手动换行
-                while len(line) > 0:
-                    if y_offset > page_height - margin:
-                        page = doc.new_page()
-                        y_offset = 50
-                    
-                    chunk = line[:chars_per_line]
-                    line = line[chars_per_line:]
-                    
-                    try:
-                        page.insert_text((margin, y_offset), chunk, fontname=font_name, fontsize=font_size)
-                    except:
-                        # 如果 china-s 失败，尝试默认字体
-                        page.insert_text((margin, y_offset), chunk, fontsize=font_size)
-                        
-                    y_offset += line_height
-            
-            doc.save(output_path)
-            doc.close()
+            with fitz.open() as doc:
+                page = doc.new_page()
+                font_name = "china-s"
+                lines = text.split("\n")
+                y_offset, margin, line_height, font_size = 50, 50, 15, 10
+                chars_per_line = int((page.rect.width - 2 * margin) / (font_size * 0.8))
+                
+                for line in lines:
+                    if not line.strip():
+                        y_offset += line_height
+                        continue
+                    while len(line) > 0:
+                        if y_offset > page.rect.height - margin:
+                            page = doc.new_page()
+                            y_offset = 50
+                        chunk = line[:chars_per_line]
+                        line = line[chars_per_line:]
+                        with suppress(Exception):
+                            page.insert_text((margin, y_offset), chunk, fontname=font_name, fontsize=font_size)
+                        y_offset += line_height
+                doc.save(str(output_path))
         except Exception as e:
-            print(f"生成 PDF 失败: {str(e)}")
+            print(f"生成 PDF 失败: {e}")
 
     @staticmethod
-    async def perform_ocr_on_pdf(file_path: str) -> str:
-        """对 PDF 文件进行 OCR 识别"""
+    async def perform_ocr_on_pdf(file_path: str | Path) -> str:
+        """对 PDF 文件进行 OCR 识别 (并发优化版)"""
         from .openai_service import OpenAIService
-        
         openai_service = OpenAIService()
-        doc = fitz.open(file_path)
-        full_text = []
         
-        # 限制页数，防止耗费过多资源
-        max_pages = 35  
-        num_pages = min(doc.page_count, max_pages)
-        
-        print(f"开始对 PDF 进行 OCR 识别，共 {num_pages} 页...")
-        
-        for page_num in range(num_pages):
-            try:
-                page = doc[page_num]
-                # 提高分辨率以获得更好的 OCR 效果 (2.0 zoom)
-                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                img_bytes = pix.tobytes("jpeg")
-                base64_image = base64.b64encode(img_bytes).decode('utf-8')
+        try:
+            with fitz.open(str(file_path)) as doc:
+                max_pages = 35  
+                num_pages = min(doc.page_count, max_pages)
+                print(f"开始对 PDF 进行 OCR 识别，共 {num_pages} 页 (并发处理)...")
                 
-                # 调用 OpenAI/DeepSeek OCR
-                page_text = await openai_service.ocr_image(base64_image)
-                if page_text:
-                    full_text.append(f"--- 第 {page_num + 1} 页 (OCR) ---\n{page_text}")
+                tasks = []
+                for page_num in range(num_pages):
+                    page = doc[page_num]
+                    # 降低分辨率以加快传输和处理，matrix=1.5 通常足够识别文字
+                    pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+                    base64_image = base64.b64encode(pix.tobytes("jpeg")).decode('utf-8')
+                    tasks.append(openai_service.ocr_image(base64_image))
+
+            # 并发执行 OCR 请求
+            # 注意：这可能会瞬间消耗大量 Token 或触发 API 速率限制
+            # 建议分批执行，例如每批 5 页
+            batch_size = 5
+            results = []
+            for i in range(0, len(tasks), batch_size):
+                batch = tasks[i:i + batch_size]
+                print(f"正在处理 OCR 批次 {i//batch_size + 1}/{(len(tasks)+batch_size-1)//batch_size}...")
+                batch_results = await asyncio.gather(*batch, return_exceptions=True)
+                results.extend(batch_results)
+
+            full_text = []
+            for i, res in enumerate(results):
+                if isinstance(res, Exception):
+                    print(f"PDF 第 {i + 1} 页 OCR 失败: {res}")
+                    full_text.append(f"--- 第 {i + 1} 页 (OCR 失败) ---")
+                elif res:
+                    full_text.append(f"--- 第 {i + 1} 页 (OCR) ---\n{res}")
                 else:
-                    full_text.append(f"--- 第 {page_num + 1} 页 (OCR 失败) ---")
-                
-                print(f"PDF OCR 进度: {page_num + 1}/{num_pages}")
-            except Exception as e:
-                print(f"PDF 第 {page_num + 1} 页 OCR 失败: {str(e)}")
-                full_text.append(f"--- 第 {page_num + 1} 页 (OCR 异常) ---")
+                    full_text.append(f"--- 第 {i + 1} 页 (无内容) ---")
             
-        doc.close()
-        return "\n\n".join(full_text)
+            return "\n\n".join(full_text)
+        except Exception as e:
+            print(f"PDF OCR 异常: {e}")
+            return ""
 
     @staticmethod
-    async def perform_ocr_on_image(file_path: str) -> str:
+    async def perform_ocr_on_image(file_path: str | Path) -> str:
         """对图片文件进行 OCR 识别"""
         from .openai_service import OpenAIService
-        
         openai_service = OpenAIService()
         try:
-            with open(file_path, "rb") as image_file:
-                img_bytes = image_file.read()
-                base64_image = base64.b64encode(img_bytes).decode('utf-8')
-                
-            text = await openai_service.ocr_image(base64_image)
-            return text
+            path = Path(file_path)
+            img_bytes = path.read_bytes()
+            base64_image = base64.b64encode(img_bytes).decode('utf-8')
+            return await openai_service.ocr_image(base64_image)
         except Exception as e:
-            print(f"图片 OCR 失败: {str(e)}")
+            print(f"图片 OCR 失败: {e}")
             return ""

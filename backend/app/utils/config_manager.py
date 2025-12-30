@@ -1,19 +1,19 @@
 """配置管理工具"""
 import json
-import os
-from typing import Dict, Optional
+from pathlib import Path
+from typing import Dict
 
 
 class ConfigManager:
     """用户配置管理器"""
     
-    def __init__(self):
+    def __init__(self) -> None:
         # 配置文件路径 - 存储到用户家目录中
-        self.config_dir = os.path.join(os.path.expanduser("~"), ".ai_write_helper")
-        self.config_file = os.path.join(self.config_dir, "user_config.json")
+        self.config_dir = Path.home() / ".ai_write_helper"
+        self.config_file = self.config_dir / "user_config.json"
         
         # 确保配置目录存在
-        os.makedirs(self.config_dir, exist_ok=True)
+        self.config_dir.mkdir(parents=True, exist_ok=True)
     
     def load_config(self) -> Dict:
         """从本地JSON文件加载配置"""
@@ -23,11 +23,10 @@ class ConfigManager:
             'model_name': 'gpt-3.5-turbo'
         }
         
-        if os.path.exists(self.config_file):
+        if self.config_file.exists():
             try:
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    loaded_config = json.load(f)
-                    default_config.update(loaded_config)
+                loaded_config = json.loads(self.config_file.read_text(encoding='utf-8'))
+                default_config.update(loaded_config)
             except Exception:
                 pass  # 如果读取失败，使用默认配置
         
@@ -42,8 +41,7 @@ class ConfigManager:
         }
         
         try:
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(config, f, ensure_ascii=False, indent=2)
+            self.config_file.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding='utf-8')
             return True
         except Exception:
             return False

@@ -6,6 +6,7 @@ import { useAppState } from './hooks/useAppState';
 import Sidebar from './components/Sidebar';
 import StepBar from './components/StepBar';
 import DocumentAnalysis from './pages/DocumentAnalysis';
+import BiddingAnalysis from './pages/BiddingAnalysis';
 import OutlineEdit from './pages/OutlineEdit';
 import ContentEdit from './pages/ContentEdit';
 import { 
@@ -23,11 +24,14 @@ function App() {
     updateAnalysisResults,
     updateOutline,
     updateSelectedChapter,
+    updateTenderInfo,
+    updateBiddingAnalysis,
+    updateCompanyInfo,
     nextStep,
     prevStep,
   } = useAppState();
 
-  const steps = ['标书解析', '目录编辑', '正文编辑'];
+  const steps = ['标书解析', '投标决策', '目录编辑', '正文编辑'];
 
   const renderCurrentPage = () => {
     switch (state.currentStep) {
@@ -46,6 +50,20 @@ function App() {
         );
       case 1:
         return (
+          <BiddingAnalysis
+            fileContent={state.fileContent}
+            tenderInfo={state.tenderInfo}
+            riskAnalysis={state.riskAnalysis}
+            bidDecision={state.bidDecision}
+            scoringSimulation={state.scoringSimulation}
+            companyInfo={state.companyInfo}
+            onUpdateTenderInfo={updateTenderInfo}
+            onUpdateAnalysis={updateBiddingAnalysis}
+            onUpdateCompanyInfo={updateCompanyInfo}
+          />
+        );
+      case 2:
+        return (
           <OutlineEdit
             projectOverview={state.projectOverview}
             techRequirements={state.techRequirements}
@@ -53,13 +71,14 @@ function App() {
             onOutlineGenerated={updateOutline}
           />
         );
-      case 2:
+      case 3:
         return (
           <ContentEdit
             outlineData={state.outlineData}
             selectedChapter={state.selectedChapter}
             projectOverview={state.projectOverview}
             onChapterSelect={updateSelectedChapter}
+            onOutlineUpdate={updateOutline}
           />
         );
       default:
@@ -86,7 +105,7 @@ function App() {
             </h2>
             <div className="h-4 w-px bg-slate-200"></div>
             <p className="text-sm text-slate-500">
-              项目：未命名标书项目
+              项目：{state.tenderInfo?.project_name || '未命名标书项目'}
             </p>
           </div>
           
@@ -107,7 +126,7 @@ function App() {
         {/* 页面内容 */}
         <main id="app-main-scroll" className="flex-1 overflow-y-auto bg-slate-50/50">
           <div className="max-w-6xl mx-auto px-8 py-8">
-            {/* 这里的 StepBar 可以选择保留或移除，侧边栏已经有导航 */}
+            {/* StepBar */}
             <div className="mb-8">
               <StepBar steps={steps} currentStep={state.currentStep} onStepClick={updateStep} />
             </div>
@@ -118,7 +137,7 @@ function App() {
           </div>
         </main>
 
-        {/* 底部浮动导航按钮 (可选) */}
+        {/* 底部浮动导航按钮 */}
         <div className="absolute bottom-8 right-8 flex items-center gap-3">
           {state.currentStep > 0 && (
             <button

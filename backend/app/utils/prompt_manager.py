@@ -38,8 +38,19 @@ def read_expand_outline_prompt():
   """
   return system_prompt
   
-def generate_outline_prompt(overview, requirements):
-  system_prompt = """你是一个专业的标书编写专家。根据提供的项目概述和技术评分要求，生成投标文件中技术标部分的目录结构。
+def generate_outline_prompt(overview, requirements, project_type="general"):
+    type_hints = {
+        "engineering": "工程类项目：提纲应侧重于施工方案、技术参数、安全质量保证、工艺流程和工程进度。",
+        "service": "服务类项目：提纲应突出服务内容、响应机制、团队优势、质量承诺和售后服务方案。",
+        "goods": "货物类项目：提纲应强调产品技术性能、规格偏离表、供货周期、安装调试和维保方案。",
+        "general": "通用类项目：根据项目实际情况平衡各方面内容。"
+    }
+    hint = type_hints.get(project_type, type_hints["general"])
+
+    system_prompt = f"""你是一个专业的标书编写专家。根据提供的项目概述和技术评分要求，生成投标文件中技术标部分的目录结构。
+
+  行业要求：
+  {hint}
 
   要求：
   1. 目录结构要全面覆盖技术标的所有必要章节
@@ -50,32 +61,32 @@ def generate_outline_prompt(overview, requirements):
   6. 除了JSON结果外，不要输出任何其他内容
 
   JSON格式要求：
-  {
+  {{
     "outline": [
-      {
+      {{
         "id": "1",
         "title": "",
         "description": "",
         "children": [
-          {
+          {{
             "id": "1.1",
             "title": "",
             "description": "",
             "children":[
-                {
+                {{
                   "id": "1.1.1",
                   "title": "",
                   "description": ""
-                }
+                }}
             ]
-          }
+          }}
         ]
-      }
+      }}
     ]
-  }
+  }}
   """
               
-  user_prompt = f"""请基于以下项目信息生成标书目录结构：
+    user_prompt = f"""请基于以下项目信息生成标书目录结构：
 
   项目概述：
   {overview}
@@ -84,13 +95,25 @@ def generate_outline_prompt(overview, requirements):
   {requirements}
 
   请生成完整的技术标目录结构，确保覆盖所有技术评分要点。"""
-  return system_prompt, user_prompt
+    return system_prompt, user_prompt
 
 
   
-def generate_outline_with_old_prompt(overview, requirements, old_outline):
-  system_prompt = """你是一个专业的标书编写专家。根据提供的项目概述和技术评分要求，生成投标文件中技术标部分的目录结构。
+def generate_outline_with_old_prompt(overview, requirements, old_outline, project_type="general"):
+    type_hints = {
+        "engineering": "工程类项目：提纲应侧重于施工方案、技术参数、安全质量保证、工艺流程和工程进度。",
+        "service": "服务类项目：提纲应突出服务内容、响应机制、团队优势、质量承诺和售后服务方案。",
+        "goods": "货物类项目：提纲应强调产品技术性能、规格偏离表、供货周期、安装调试和维保方案。",
+        "general": "通用类项目：根据项目实际情况平衡各方面内容。"
+    }
+    hint = type_hints.get(project_type, type_hints["general"])
+
+    system_prompt = f"""你是一个专业的标书编写专家。根据提供的项目概述和技术评分要求，生成投标文件中技术标部分的目录结构。
   用户会提供一个自己编写的目录，你要保证目录满足技术评分要求，并充分结合用户自己编写的目录。
+
+  行业要求：
+  {hint}
+
   要求：
   1. 目录结构要全面覆盖技术标的所有必要章节
   2. 章节名称要专业、准确，符合投标文件规范
@@ -100,32 +123,31 @@ def generate_outline_with_old_prompt(overview, requirements, old_outline):
   6. 除了JSON结果外，不要输出任何其他内容
 
   JSON格式要求：
-  {
+  {{
     "outline": [
-      {
+      {{
         "id": "1",
         "title": "",
         "description": "",
         "children": [
-          {
+          {{
             "id": "1.1",
             "title": "",
             "description": "",
             "children":[
-                {
+                {{
                   "id": "1.1.1",
                   "title": "",
                   "description": ""
-                }
+                }}
             ]
-          }
+          }}
         ]
-      }
+      }}
     ]
-  }
+  }}
   """
-              
-  user_prompt = f"""请基于以下项目信息生成标书目录结构：
+    user_prompt = f"""请基于以下项目信息生成标书目录结构：
   用户自己编写的目录：
   {old_outline}
 
@@ -136,4 +158,4 @@ def generate_outline_with_old_prompt(overview, requirements, old_outline):
   {requirements}
 
   请生成完整的技术标目录结构，确保覆盖所有技术评分要点。"""
-  return system_prompt, user_prompt
+    return system_prompt, user_prompt

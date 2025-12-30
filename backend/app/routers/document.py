@@ -1,123 +1,188 @@
 """文档处理相关API路由"""
+import json
+import io
+import re
+import traceback
+from pathlib import Path
+from urllib.parse import quote
+from typing import List
+
+import docx
+from docx.shared import Pt, Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
+
 from ..models.schemas import FileUploadResponse, AnalysisRequest, AnalysisType, WordExportRequest
 from ..services.file_service import FileService
 from ..services.openai_service import OpenAIService
 from ..utils.config_manager import config_manager
 from ..utils.sse import sse_response
-import json
-import io
-import re
-import docx
-from docx.shared import Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml.ns import qn
-from urllib.parse import quote
 
 router = APIRouter(prefix="/api/document", tags=["文档处理"])
 
 
-def set_run_font_simsun(run: docx.text.run.Run) -> None:
+def set_run_font_simsun(run: docx.text.run.Run, size_pt: float = None) -> None:
     """统一将 run 字体设置为宋体（包含 EastAsia 字体设置）"""
     run.font.name = "宋体"
+    if size_pt:
+        run.font.size = Pt(size_pt)
     r = run._element.rPr
     if r is not None and r.rFonts is not None:
         r.rFonts.set(qn("w:eastAsia"), "宋体")
 
 
-def set_paragraph_font_simsun(paragraph: docx.text.paragraph.Paragraph) -> None:
+def set_paragraph_font_simsun(paragraph: docx.text.paragraph.Paragraph, size_pt: float = None) -> None:
     """将段落内所有 runs 字体设置为宋体"""
     for run in paragraph.runs:
+        set_run_font_simsun(run, size_pt)
+
+
+def add_page_number(run: docx.text.run.Run) -> None:
+    """在 footer 中添加页码的 XML 字段"""
+    fldChar1 = OxmlElement('w:fldChar')
+    fldChar1.set(qn('w:fldCharType'), 'begin')
+
+    instrText = OxmlElement('w:instrText')
+    instrText.set(qn('xml:space'), 'preserve')
+    instrText.text = "PAGE"
+
+    fldChar2 = OxmlElement('w:fldChar')
+    fldChar2.set(qn('w:fldCharType'), 'separate')
+
+    t = OxmlElement('w:t')
+    t.text = "1"
+
+    fldChar3 = OxmlElement('w:fldChar')
+    fldChar3.set(qn('w:fldCharType'), 'end')
+
+    run._element.append(fldChar1)
+    run._element.append(instrText)
+    run._element.append(fldChar2)
+    run._element.append(t)
+    run._element.append(fldChar3)
+
+
+def add_markdown_runs(para: docx.text.paragraph.Paragraph, text: str) -> None:
+    parts = re.split(r"(\*\*.*?\*\*|\*.*?\*|`.*?`)", text)
+    for part in parts:
+        if not part: continue
+        run = para.add_run()
+        if part.startswith("**") and part.endswith("**"): run.text, run.bold = part[2:-2], True
+        elif part.startswith("*") and part.endswith("*"): run.text, run.italic = part[1:-1], True
+        else: run.text = part
         set_run_font_simsun(run)
 
 
+def add_markdown_paragraph(doc: docx.Document, text: str) -> None:
+    para = doc.add_paragraph()
+    para.paragraph_format.first_line_indent = Inches(0.3)
+    add_markdown_runs(para, text)
+
+
+def render_markdown_blocks(doc: docx.Document, blocks: list) -> None:
+    for block in blocks:
+        kind = block[0]
+        if kind == "list":
+            for k, n, t in block[1]:
+                p = doc.add_paragraph()
+                p.paragraph_format.left_indent = Inches(0.3)
+                run = p.add_run("• " if k == "unordered" else f"{n}. ")
+                set_run_font_simsun(run); add_markdown_runs(p, t)
+        elif kind == "heading":
+            h = doc.add_heading(block[2], level=block[1]); set_paragraph_font_simsun(h)
+        elif kind == "paragraph":
+            p = doc.add_paragraph(); p.paragraph_format.first_line_indent = Inches(0.3)
+            add_markdown_runs(p, block[1])
+
+
+def parse_markdown_blocks(content: str) -> list:
+    blocks, lines, i = [], content.split("\n"), 0
+    while i < len(lines):
+        line = lines[i].rstrip("\r").strip()
+        if not line: i += 1; continue
+        if line.startswith(("- ", "* ")) or re.match(r"^\d+\.\s", line):
+            items = []
+            while i < len(lines):
+                stripped = lines[i].strip()
+                if stripped.startswith(("- ", "* ")):
+                    items.append(("unordered", None, re.sub(r"^[-*]\s+", "", stripped))); i += 1
+                elif m := re.match(r"^(\d+)\.\s+(.*)$", stripped):
+                    items.append(("ordered", m.group(1), m.group(2))); i += 1
+                else: break
+            blocks.append(("list", items))
+        elif line.startswith("#"):
+            if m := re.match(r"^(#+)\s*(.*)$", line): blocks.append(("heading", min(len(m.group(1)), 3), m.group(2)))
+            i += 1
+        else:
+            p_lines = []
+            while i < len(lines):
+                stripped = lines[i].strip()
+                if stripped and not stripped.startswith(("-", "*", "#")): p_lines.append(stripped); i += 1
+                else: break
+            if p_lines: blocks.append(("paragraph", " ".join(p_lines)))
+    return blocks
+
+
 @router.post("/upload", response_model=FileUploadResponse)
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile = File(...)) -> FileUploadResponse:
     """上传文档文件并提取文本内容"""
     print(f"\n{'='*60}")
-    print(f"[API] 收到文件上传请求")
-    print(f"  文件名: {file.filename}")
-    print(f"  Content-Type: {file.content_type}")
+    print(f"[API] 收到文件上传请求: {file.filename} ({file.content_type})")
     print(f"{'='*60}\n")
     
     try:
-        # 扩展允许的文件类型
-        allowed_types = [
+        allowed_exts = {".pdf", ".docx", ".doc", ".docm"}
+        allowed_types = {
             "application/pdf",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "application/msword",
             "application/vnd.ms-word.document.macroEnabled.12",
-            "application/octet-stream"  # 有时浏览器会误识别
-        ]
+            "application/octet-stream"
+        }
         
-        # 也可以通过后缀名判断
-        filename_lower = (file.filename or "").lower()
-        is_allowed_ext = any(filename_lower.endswith(ext) for ext in [".pdf", ".docx", ".doc", ".docm"])
+        filename = file.filename or ""
+        ext = Path(filename).suffix.lower()
         
-        print(f"[API] 文件类型检查:")
-        print(f"  Content-Type 匹配: {file.content_type in allowed_types}")
-        print(f"  扩展名匹配: {is_allowed_ext}")
-        
-        if file.content_type not in allowed_types and not is_allowed_ext:
-            print(f"[API] 文件类型不支持，拒绝处理\n")
+        if file.content_type not in allowed_types and ext not in allowed_exts:
             return FileUploadResponse(
                 success=False,
                 message="不支持的文件类型，请上传 PDF 或 Word (.docx) 文档"
             )
         
-        print(f"[API] 开始调用 FileService.process_uploaded_file...")
-        
-        # 处理文件并提取文本，同时获取文件URL
         file_content, file_url = await FileService.process_uploaded_file(file)
+        print(f"[API] 文件处理完成: {len(file_content)} 字符, URL: {file_url}")
         
-        print(f"[API] 文件处理完成")
-        print(f"  提取内容长度: {len(file_content) if file_content else 0} 字符")
-        print(f"  文件URL: {file_url}")
-        
-        response = FileUploadResponse(
+        return FileUploadResponse(
             success=True,
-            message=f"文件 {file.filename} 上传成功",
-            filename=file.filename,
+            message=f"文件 {filename} 上传成功",
+            filename=filename,
             file_content=file_content,
             file_url=file_url
         )
         
-        print(f"[API] 准备返回响应")
-        print(f"  success: {response.success}")
-        print(f"  message: {response.message}")
-        print(f"  file_content 长度: {len(response.file_content) if response.file_content else 0}")
-        print(f"{'='*60}\n")
-        
-        return response
-        
     except Exception as e:
-        print(f"[API ERROR] 文件处理异常: {str(e)}")
-        import traceback
+        print(f"[API ERROR] 文件处理异常: {e}")
         traceback.print_exc()
-        print(f"{'='*60}\n")
-        
         return FileUploadResponse(
             success=False,
-            message=f"文件处理失败: {str(e)}"
+            message=f"文件处理失败: {e}"
         )
 
 
 @router.post("/analyze-stream")
-async def analyze_document_stream(request: AnalysisRequest):
+async def analyze_document_stream(request: AnalysisRequest) -> StreamingResponse:
     """流式分析文档内容"""
     try:
-        # 加载配置
         config = config_manager.load_config()
-        
         if not config.get('api_key'):
             raise HTTPException(status_code=400, detail="请先配置OpenAI API密钥")
 
-        # 创建OpenAI服务实例
         openai_service = OpenAIService()
         
         async def generate():
-            # 构建分析提示词
             if request.analysis_type == AnalysisType.OVERVIEW:
                 system_prompt = """你是一个专业的标书撰写专家。请分析用户发来的招标文件，提取并总结项目概述信息。
             
@@ -136,62 +201,46 @@ async def analyze_document_stream(request: AnalysisRequest):
 3. 直接返回整理好的项目概述，除此之外不返回任何其他内容
 """
             elif request.analysis_type == AnalysisType.REQUIREMENTS:
-                system_prompt = """你是一名专业的招标文件分析师，擅长从复杂的招标文档中高效提取“技术评分项”相关内容。请严格按照以下步骤和规则执行任务：
-### 1. 目标定位
-- 重点识别文档中与“技术评分”、“评标方法”、“评分标准”、“技术参数”、“技术要求”、“技术方案”、“技术部分”或“评审要素”相关的章节（如“第X章 评标方法”或“附件X：技术评分表”）。
-- 一定不要提取商务、价格、资质等于技术类评分项无关的条目。
-### 2. 提取内容要求
-对每一项技术评分项，按以下结构化格式输出（若信息缺失，标注“未提及”），如果评分项不够明确，你需要根据上下文分析并也整理成如下格式：
+                system_prompt = """你是一名专业的招标文件分析师，擅长从复杂的招标文档中高效提取“技术评分项”相关内容。
+对每一项技术评分项，按以下结构化格式输出（若信息缺失，标注“未提及”）：
 【评分项名称】：<原文描述，保留专业术语>
-【权重/分值】：<具体分值或占比，如“30分”或“40%”>
+【权重/分值】：<具体分值或占比，必须取整，不要保留小数位。例如“30分”或“40%”>
 【评分标准】：<详细规则，如“≥95%得满分，每低1%扣0.5分”>
 【数据来源】：<文档中的位置，如“第5.2.3条”或“附件3-表2”>
-
-### 3. 处理规则
-- **模糊表述**：有些招标文件格式不是很标准，没有明确的“技术评分表”，但一定都会有“技术评分”相关内容，请根据上下文判断评分项。
-- **表格处理**：若评分项以表格形式呈现，按行提取，并标注“[表格数据]”。
-- **分层结构**：若存在二级评分项（如“技术方案→子项1、子项2”），用缩进或编号体现层级关系。
-- **单位统一**：将所有分值统一为“分”或“%”，并注明原文单位（如原文为“20点”则标注“[原文：20点]”）。
-
-### 4. 输出示例
-【评分项名称】：系统可用性 
-【权重/分值】：25分 
-【评分标准】：年平均故障时间≤1小时得满分；每增加1小时扣2分，最高扣10分。 
-【数据来源】：附件4-技术评分细则（第3页） 
-
-【评分项名称】：响应时间
-【权重/分分】：15分 [原文：15%]
-【评分标准】：≤50ms得满分；每增加10ms扣1分。
-【数据来源】：第6.1.2条
-
-### 5. 验证步骤
-提取完成后，执行以下自检：
-- [ ] 所有技术评分项是否覆盖（无遗漏）？
-- [ ] 是否错误提取商务、价格、资质等于技术类评分项无关的条目？
-- [ ] 权重总和是否与文档声明的技术分总分一致（如“技术部分共60分”）？
 
 直接返回提取结果，除此之外不输出任何其他内容
 """
             else:  # structural
-                system_prompt = """你是一名资深招投标分析师，请对用户提供的招标文件全文进行结构化解析，完成以下任务：
+                system_prompt = """你是一名资深招投标分析师，请对用户提供的招标文件进行全维度结构化解析，并输出为详细的 JSON 格式。
+解析内容需包含以下核心板块：
 
-1. 提取所有资格条件（如注册资本、资质证书、业绩要求）；
-2. 列出全部技术参数和规格要求，并标注是否为“★”条款（不可偏离项）；
-3. 梳理评分标准，区分商务分、技术分、价格分及其权重；
-4. 识别隐性需求（如“本地化服务”“近三年同类项目”等暗示性表述）；
-5. 输出为 JSON 格式，包含字段：qualification, technical_requirements, scoring_criteria, implicit_needs, risk_flags。
+1. executive_summary: 用一句话概括本项目的核心本质和对投标方的核心要求（如：“本项目是一个高预算、高技术门槛的政府软件采购项目，侧重于系统安全性和本地化服务能力”）。
 
-示例输出格式：
-```json
-{
-  "qualification": ["具备建筑幕墙专业承包一级资质", "近3年完成2个以上类似项目"],
-  "technical_requirements": [{"item": "玻璃厚度", "value": "≥12mm", "mandatory": true}],
-  "scoring_criteria": {"技术方案": 40, "项目团队": 20, "报价": 40},
-  "implicit_needs": ["倾向本地企业", "重视BIM应用经验"],
-  "risk_flags": ["未明确是否接受联合体"]
-}
-```
-请直接返回 JSON 格式的内容，不要有任何 Markdown 代码块标签或其他解释性文字。
+2. action_items: 列出 3-5 条投标方必须立即关注的“核心行动项/关键需求”，以短句形式表达。
+
+3. project_summary (项目摘要看板):
+   - total_score: 总分值（如 100，必须为整数）
+   - mandatory_count: 强制性/星号条款总数
+   - budget: 预算金额（若提及）
+   - delivery_time: 交付/工期/服务期要求
+   - qualification_count: 核心资格要求数量
+
+4. qualification (资格门槛):
+   - 提取所有参与本项目必须具备的资质、业绩、人员等硬性要求。
+
+5. technical_requirements (技术需求清单):
+   - 包含 item (需求项名称), value (具体参数/要求), mandatory (是否为强制性条款，布尔值)。
+
+6. scoring_criteria (评分权重概览):
+   - 提取各板块（如技术方案、商务、价格、售后）的得分占比（分值必须取整，不保留小数）。
+
+7. implicit_needs (隐性需求挖掘):
+   - 挖掘文字背后的深层需求，如“偏向本地化服务”、“对兼容性要求极高”等。
+
+8. risk_flags (核心风险预警):
+   - 识别可能导致废标或重大执行风险的条款。
+
+请直接返回纯 JSON 格式的内容，不要包含 Markdown 代码块标签（如 ```json）或任何解释性文字。
 """
             
             mapping = {
@@ -202,299 +251,150 @@ async def analyze_document_stream(request: AnalysisRequest):
             analysis_type_cn = mapping.get(request.analysis_type, "分析")
             user_prompt = f"请分析以下招标文件内容，提取{analysis_type_cn}信息：\n\n{request.file_content}"
             
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-            
-            # 流式返回分析结果
+            messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
             async for chunk in openai_service.stream_chat_completion(messages, temperature=0.3):
                 yield f"data: {json.dumps({'chunk': chunk}, ensure_ascii=False)}\n\n"
-            
-            # 发送结束信号
             yield "data: [DONE]\n\n"
         
         return sse_response(generate())
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"文档分析失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"文档分析失败: {e}")
 
 
 @router.post("/export-word")
-async def export_word(request: WordExportRequest):
-    """根据目录数据导出Word文档"""
+async def export_word(request: WordExportRequest) -> StreamingResponse:
+    """根据目录数据导出Word文档（标准标书整合版）"""
     try:
         doc = docx.Document()
+        
+        # 1. 基础样式优化
+        styles = doc.styles
+        for name in ["Normal", "Heading 1", "Heading 2", "Heading 3", "Title"]:
+            if name in styles:
+                style = styles[name]
+                style.font.name = "宋体"
+                if style._element.rPr is None: style._element._add_rPr()
+                style._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
+                
+                if name == "Normal":
+                    style.font.size = Pt(12)  # 小四
+                    style.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+                    style.paragraph_format.space_after = Pt(6)
+                elif name == "Heading 1":
+                    style.font.size = Pt(16)
+                    style.font.bold = True
+                    style.paragraph_format.space_before = Pt(12)
+                    style.paragraph_format.space_after = Pt(6)
+                elif name == "Heading 2":
+                    style.font.size = Pt(14)
+                    style.font.bold = True
+                    style.paragraph_format.space_before = Pt(10)
+                    style.paragraph_format.space_after = Pt(4)
 
-        # 统一设置文档的基础字体为宋体，取消普通段落默认加粗
-        try:
-            styles = doc.styles
-            base_styles = ["Normal", "Heading 1", "Heading 2", "Heading 3", "Title"]
-            for style_name in base_styles:
-                if style_name in styles:
-                    style = styles[style_name]
-                    font = style.font
-                    font.name = "宋体"
-                    # 设置中文字体
-                    if style._element.rPr is None:
-                        style._element._add_rPr()
-                    rpr = style._element.rPr
-                    rpr.rFonts.set(qn("w:eastAsia"), "宋体")
-                    if style_name == "Normal":
-                        font.bold = False
-        except Exception:
-            # 字体设置失败不影响文档生成，忽略
-            pass
-
-        # AI 生成声明
-        p = doc.add_paragraph()
-        run = p.add_run("内容由AI生成")
-        run.italic = True
-        run.font.size = Pt(9)
-        set_run_font_simsun(run)
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        # 文档标题
-        title = request.project_name or "投标技术文件"
+        # 2. 标书封面生成
+        doc.add_paragraph("\n\n\n")
         title_p = doc.add_paragraph()
-        title_run = title_p.add_run(title)
-        title_run.bold = True
-        title_run.font.size = Pt(16)
+        title_run = title_p.add_run("投 标 文 件")
+        title_run.bold, title_run.font.size = True, Pt(42)
         set_run_font_simsun(title_run)
         title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        doc.add_paragraph("\n")
+        tech_p = doc.add_paragraph()
+        tech_run = tech_p.add_run("（技 术 部 分）")
+        tech_run.font.size = Pt(22)
+        set_run_font_simsun(tech_run)
+        tech_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        doc.add_paragraph("\n\n\n\n")
+        
+        # 封面信息表格
+        info_table = doc.add_table(rows=4, cols=2)
+        info_table.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        labels = ["项 目 名 称：", "项目编号：", "投 标 人：", "日    期："]
+        values = [
+            request.project_name or "————",
+            request.project_number or "————",
+            request.bidder_name or "————",
+            request.bid_date or "202X年XX月XX日"
+        ]
+        for i in range(4):
+            cell_l = info_table.cell(i, 0)
+            cell_l.text = labels[i]
+            p_l = cell_l.paragraphs[0]
+            p_l.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            set_paragraph_font_simsun(p_l, 14)
+            
+            cell_v = info_table.cell(i, 1)
+            cell_v.text = values[i]
+            p_v = cell_v.paragraphs[0]
+            set_paragraph_font_simsun(p_v, 14)
+            for run in p_v.runs: run.underline = True
 
-        # 项目概述
-        if request.project_overview:
-            heading = doc.add_heading("项目概述", level=1)
-            heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            set_paragraph_font_simsun(heading)
-            overview_p = doc.add_paragraph(request.project_overview)
-            set_paragraph_font_simsun(overview_p)
-            overview_p_format = overview_p.paragraph_format
-            overview_p_format.space_after = Pt(12)
+        doc.add_page_break()
 
-        # 简单的 Markdown 段落解析：支持标题、列表、表格和基础加粗/斜体
-        def add_markdown_runs(para: docx.text.paragraph.Paragraph, text: str) -> None:
-            """在指定段落中追加 markdown 文本的 runs"""
-            pattern = r"(\*\*.*?\*\*|\*.*?\*|`.*?`)"
-            parts = re.split(pattern, text)
-            for part in parts:
-                if not part:
-                    continue
-                run = para.add_run()
-                # 加粗
-                if part.startswith("**") and part.endswith("**") and len(part) > 4:
-                    run.text = part[2:-2]
-                    run.bold = True
-                # 斜体
-                elif part.startswith("*") and part.endswith("*") and len(part) > 2:
-                    run.text = part[1:-1]
-                    run.italic = True
-                # 行内代码：这里只去掉反引号
-                elif part.startswith("`") and part.endswith("`") and len(part) > 2:
-                    run.text = part[1:-1]
-                else:
-                    run.text = part
-                # 确保字体为宋体
-                set_run_font_simsun(run)
+        # 3. 页码设置 (从目录页开始)
+        for section in doc.sections:
+            footer = section.footer
+            footer_para = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
+            footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = footer_para.add_run()
+            set_run_font_simsun(run, 9)
+            add_page_number(run)
 
-        def add_markdown_paragraph(text: str) -> None:
-            """将一段 Markdown 文本解析为一个普通段落，保留加粗/斜体效果"""
-            para = doc.add_paragraph()
-            add_markdown_runs(para, text)
-            para.paragraph_format.space_after = Pt(6)
-
-        def parse_markdown_blocks(content: str):
-            """
-            识别 Markdown 内容中的块级元素，返回结构化的 block 列表：
-            - ('list', items)        items: [(kind, num_str, text), ...]
-            - ('table', rows)        rows: [text, ...]
-            - ('heading', level, text)
-            - ('paragraph', text)
-            """
-            blocks = []
-            lines = content.split("\n")
-            i = 0
-            while i < len(lines):
-                line = lines[i].rstrip("\r").strip()
-                if not line:
-                    i += 1
-                    continue
-
-                # 列表项（有序/无序）
-                if line.startswith("- ") or line.startswith("* ") or re.match(r"^\d+\.\s", line):
-                    # items: (kind, number, text)
-                    items = []
-                    while i < len(lines):
-                        raw = lines[i].rstrip("\r")
-                        stripped = raw.strip()
-                        # 无序列表
-                        if stripped.startswith("- ") or stripped.startswith("* "):
-                            text = re.sub(r"^[-*]\s+", "", stripped).strip()
-                            if text:
-                                items.append(("unordered", None, text))
-                            i += 1
-                            continue
-                        # 有序列表（1. xxx）
-                        m_num = re.match(r"^(\d+)\.\s+(.*)$", stripped)
-                        if m_num:
-                            num_str, text = m_num.groups()
-                            text = text.strip()
-                            if text:
-                                items.append(("ordered", num_str, text))
-                            i += 1
-                            continue
-                        break
-
-                    if items:
-                        blocks.append(("list", items))
-                    continue
-
-                # 表格（简化为每行一个段落，单元格用 | 分隔）
-                if "|" in line:
-                    rows = []
-                    while i < len(lines):
-                        raw = lines[i].rstrip("\r")
-                        stripped = raw.strip()
-                        if "|" in stripped:
-                            # 跳过仅由 - 和 | 组成的分隔行
-                            if not re.match(r"^\|?[-\s\|]+\|?$", stripped):
-                                cells = [c.strip() for c in stripped.split("|")]
-                                row_text = " | ".join([c for c in cells if c])
-                                if row_text:
-                                    rows.append(row_text)
-                            i += 1
-                        else:
-                            break
-                    if rows:
-                        blocks.append(("table", rows))
-                    continue
-
-                # Markdown 标题（# / ## / ###）
-                if line.startswith("#"):
-                    m = re.match(r"^(#+)\s*(.*)$", line)
-                    if m:
-                        level_marks, title_text = m.groups()
-                        level = min(len(level_marks), 3)
-                        blocks.append(("heading", level, title_text.strip()))
-                    i += 1
-                    continue
-
-                # 普通段落：合并连续的普通行
-                para_lines = []
-                while i < len(lines):
-                    raw = lines[i].rstrip("\r")
-                    stripped = raw.strip()
-                    if (
-                        stripped
-                        and not stripped.startswith("-")
-                        and not stripped.startswith("*")
-                        and "|" not in stripped
-                        and not stripped.startswith("#")
-                    ):
-                        para_lines.append(stripped)
-                        i += 1
-                    else:
-                        break
-                if para_lines:
-                    text = " ".join(para_lines)
-                    blocks.append(("paragraph", text))
-                else:
-                    i += 1
-
-            return blocks
-
-        def render_markdown_blocks(blocks) -> None:
-            """将结构化的 Markdown blocks 渲染到文档"""
-            for block in blocks:
-                kind = block[0]
-                if kind == "list":
-                    items = block[1]
-                    for item_kind, num_str, text in items:
-                        p = doc.add_paragraph()
-                        if item_kind == "unordered":
-                            # 使用“• ”模拟项目符号
-                            run = p.add_run("• ")
-                            set_run_font_simsun(run)
-                        else:
-                            # 有序列表：输出 "1. " 这样的前缀
-                            prefix = f"{num_str}."
-                            run = p.add_run(prefix + " ")
-                            set_run_font_simsun(run)
-                        # 紧跟在同一段落中追加列表文本
-                        add_markdown_runs(p, text)
-                elif kind == "table":
-                    rows = block[1]
-                    for row in rows:
-                        add_markdown_paragraph(row)
-                elif kind == "heading":
-                    _, level, text = block
-                    heading = doc.add_heading(text, level=level)
-                    heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    set_paragraph_font_simsun(heading)
-                elif kind == "paragraph":
-                    _, text = block
-                    add_markdown_paragraph(text)
-
-        def add_markdown_content(content: str) -> None:
-            """解析并渲染 Markdown 文本到文档"""
-            blocks = parse_markdown_blocks(content)
-            render_markdown_blocks(blocks)
-
-        # 递归构建文档内容（章节和内容）
-        def add_outline_items(items, level: int = 1):
+        # 4. 目录页
+        doc.add_heading("目  录", level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph()
+        
+        def add_toc_item(items, level=1):
             for item in items:
-                # 章节标题
-                if level <= 3:
-                    heading = doc.add_heading(f"{item.id} {item.title}", level=level)
-                    heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    for hr in heading.runs:
-                        hr.font.name = "宋体"
-                        rr = hr._element.rPr
-                        if rr is not None and rr.rFonts is not None:
-                            rr.rFonts.set(qn("w:eastAsia"), "宋体")
-                else:
-                    para = doc.add_paragraph()
-                    run = para.add_run(f"{item.id} {item.title}")
-                    run.bold = True
-                    run.font.name = "宋体"
-                    rr = run._element.rPr
-                    if rr is not None and rr.rFonts is not None:
-                        rr.rFonts.set(qn("w:eastAsia"), "宋体")
-                    para.paragraph_format.space_before = Pt(6)
-                    para.paragraph_format.space_after = Pt(3)
+                toc_p = doc.add_paragraph()
+                toc_p.paragraph_format.left_indent = Inches(0.2 * (level - 1))
+                toc_run = toc_p.add_run(f"{item.id} {item.title}")
+                set_run_font_simsun(toc_run, 10.5)
+                if level == 1: toc_run.bold = True
+                if item.children: add_toc_item(item.children, level + 1)
+        
+        add_toc_item(request.outline)
+        doc.add_page_break()
 
-                # 叶子节点内容
+        # 5. 项目概述
+        if request.project_overview:
+            h = doc.add_heading("项目概述", level=1)
+            set_paragraph_font_simsun(h)
+            # 优化：支持项目概述的 Markdown 渲染
+            render_markdown_blocks(doc, parse_markdown_blocks(request.project_overview))
+
+        # 6. 正文渲染逻辑
+        def add_outline_items(items: list, level: int = 1) -> None:
+            for item in items:
+                if level == 1: doc.add_page_break()
+                h = doc.add_heading(f"{item.id} {item.title}", level=min(level, 3))
+                set_paragraph_font_simsun(h)
                 if not item.children:
-                    content = item.content or ""
-                    if content.strip():
-                        add_markdown_content(content)
+                    if c := (item.content or "").strip(): 
+                        render_markdown_blocks(doc, parse_markdown_blocks(c))
                 else:
                     add_outline_items(item.children, level + 1)
 
         add_outline_items(request.outline)
 
-        # 输出到内存并返回
+        # 7. 落款与盖章页
+        doc.add_page_break()
+        doc.add_paragraph("\n\n\n")
+        for text in ["投标人（盖章）：__________________________", "\n", "法定代表人或授权代表（签字）：________________", "\n", f"日    期：{request.bid_date or '202X年XX月XX日'}"]:
+            p = doc.add_paragraph()
+            run = p.add_run(text)
+            set_run_font_simsun(run, 14)
+            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
         buffer = io.BytesIO()
         doc.save(buffer)
         buffer.seek(0)
-
-        filename = f"{request.project_name or '标书文档'}.docx"
-        # 使用 RFC 5987 格式对文件名进行 URL 编码，避免非 ASCII 字符导致的编码错误
-        encoded_filename = quote(filename)
-        content_disposition = f"attachment; filename*=UTF-8''{encoded_filename}"
-        headers = {
-            "Content-Disposition": content_disposition
-        }
-
-        return StreamingResponse(
-            buffer,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers=headers
-        )
+        encoded_filename = quote(f"{request.project_name or '标书文档'}.docx")
+        return StreamingResponse(buffer, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"})
     except Exception as e:
-        # 打印详细错误信息到控制台，方便排查
-        import traceback
-        print("导出Word失败:", str(e))
+        print(f"导出Word失败: {e}")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"导出Word失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"导出Word失败: {e}")
