@@ -135,6 +135,11 @@ class OpenAIService:
                 response_format=response_format,
             )
 
+            # 检查是否是 API 调用错误信息（如 API Key 无效、网络错误等）
+            if str(full_content).strip().startswith("错误:"):
+                 # 直接抛出错误，不再重试 check_json
+                 raise Exception(full_content.strip())
+
             isok, error_msg = check_json(str(full_content), schema)
             if isok:
                 return full_content

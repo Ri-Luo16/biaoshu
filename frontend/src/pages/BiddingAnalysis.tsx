@@ -67,7 +67,7 @@ export default function BiddingAnalysis({
       const info = await parseTender(fileContent);
       onUpdateTenderInfo(info);
     } catch (err: any) {
-      setError(err.message || '解析失败');
+      setError(err.response?.data?.detail || err.message || '解析失败');
     } finally {
       setParsing(false);
     }
@@ -101,7 +101,7 @@ export default function BiddingAnalysis({
         scoringSimulation: scoreRes
       });
     } catch (err: any) {
-      setError(err.message || '分析过程发生错误');
+      setError(err.response?.data?.detail || err.message || '分析过程发生错误');
     } finally {
       setAnalyzing(false);
     }

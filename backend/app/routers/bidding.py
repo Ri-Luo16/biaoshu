@@ -1,3 +1,4 @@
+import traceback
 from fastapi import APIRouter, HTTPException, Depends
 from app.agents.bidding_agent import BiddingAgent
 from app.models.bidding import (
@@ -22,7 +23,9 @@ async def parse_tender(request: ParseTenderRequest, agent: BiddingAgent = Depend
     try:
         return await agent.parse_tender(request.file_content)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"解析招标文件失败: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"解析失败: {str(e)}")
 
 @router.post("/risk-analysis", response_model=RiskAnalysisResponse)
 async def analyze_risk(request: ParseTenderRequest, agent: BiddingAgent = Depends(get_bidding_agent)):
@@ -30,7 +33,9 @@ async def analyze_risk(request: ParseTenderRequest, agent: BiddingAgent = Depend
     try:
         return await agent.risk_analysis(request.file_content)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"风险分析失败: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"风险分析失败: {str(e)}")
 
 @router.post("/analyze-bid", response_model=GoNoGoDecision)
 async def analyze_bid(request: AnalysisRequest, agent: BiddingAgent = Depends(get_bidding_agent)):
@@ -38,7 +43,9 @@ async def analyze_bid(request: AnalysisRequest, agent: BiddingAgent = Depends(ge
     try:
         return await agent.analyze_bid(request.tender_info, request.company_info)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Go/No-Go 分析失败: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
 
 @router.post("/scoring-simulation", response_model=ScoringSimulationResponse)
 async def scoring_simulation(request: AnalysisRequest, agent: BiddingAgent = Depends(get_bidding_agent)):
@@ -46,5 +53,7 @@ async def scoring_simulation(request: AnalysisRequest, agent: BiddingAgent = Dep
     try:
         return await agent.scoring_simulation(request.tender_info, request.company_info)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"评分模拟失败: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"模拟失败: {str(e)}")
 

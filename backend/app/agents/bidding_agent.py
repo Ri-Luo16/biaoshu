@@ -8,11 +8,12 @@ from app.models.bidding import (
 )
 
 # 导入工具集
-from app.agents.tools.parsing_tools import parse_tender_structure
+from app.agents.tools.parsing_tools import parse_tender_structure, read_tender_file
 from app.agents.tools.analysis_tools import (
     go_nogo_analysis, detect_risk_clauses, simulate_evaluation
 )
 from app.agents.tools.generation_tools import generate_technical_response
+from app.agents.tools.export_tools import export_response_to_docx
 
 class BiddingAgent:
     """
@@ -24,6 +25,13 @@ class BiddingAgent:
     
     def __init__(self):
         self.openai_service = OpenAIService()
+
+    async def load_and_parse_tender(self, file_path: str) -> TenderInfo:
+        """
+        读取文件并解析招标文件
+        """
+        file_content = await read_tender_file(file_path)
+        return await self.parse_tender(file_content)
 
     async def parse_tender(self, file_content: str) -> TenderInfo:
         """
@@ -51,6 +59,12 @@ class BiddingAgent:
 
     async def generate_response(self, outline: Dict[str, Any], tender_info: TenderInfo, company_info: str = ""):
         """
-        投标文档生成
+        投标文档内容生成
         """
         return await generate_technical_response(outline, tender_info, company_info, self.openai_service)
+
+    async def export_response(self, content_structure: Dict[str, Any], file_name: str = "tender_response.docx") -> str:
+        """
+        导出投标文档为 Word
+        """
+        return export_response_to_docx(content_structure, file_name)

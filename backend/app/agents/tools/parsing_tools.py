@@ -32,20 +32,33 @@ async def parse_tender_structure(file_content: str, openai_service: OpenAIServic
     prompt = f"""请分析以下招标文件内容，提取关键信息并以JSON格式返回。
         
 需提取字段说明：
-- project_name: 项目名称
-- project_number: 项目编号
-- tender_deadline: 投标截止时间
-- budget: 项目预算/招标控制价
-- purchaser: 采购人
-- agency: 代理机构
-- qualifications: 资格要求列表 (List[str])
-- evaluation_method: 评标办法简述
-- technical_requirements: 核心技术规范/需求列表 (List[str])
+- project_name: 项目名称 (必填)
+- project_number: 项目编号 (若未找到返回空字符串)
+- tender_deadline: 投标截止时间 (若未找到返回空字符串)
+- budget: 项目预算/招标控制价 (若未找到返回空字符串)
+- purchaser: 采购人 (若未找到返回空字符串)
+- agency: 代理机构 (若未找到返回空字符串)
+- qualifications: 资格要求列表 (List[str]，若无则返回空列表)
+- evaluation_method: 评标办法简述 (若未找到返回空字符串)
+- technical_requirements: 核心技术规范/需求列表 (List[str]，若无则返回空列表)
+
+对于未提及的信息，请统一使用空字符串 "" 或空列表 []，不要使用 null。
 
 招标文件内容片段（仅展示前15000字符）：
 {file_content[:15000]} 
 """
-    schema = TenderInfo.model_json_schema()
+    # 使用实例模版替代 model_json_schema，因为 check_json 是基于结构对比的
+    schema = {
+        "project_name": "示例项目名称",
+        "project_number": "示例编号",
+        "tender_deadline": "2023-01-01",
+        "budget": "100万元",
+        "purchaser": "示例采购人",
+        "agency": "示例代理机构",
+        "qualifications": ["资格要求1"],
+        "evaluation_method": "综合评分法",
+        "technical_requirements": ["技术要求1"]
+    }
     
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},

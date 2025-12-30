@@ -42,15 +42,26 @@ def check_json(json_str: str, schema: str | dict | list) -> Tuple[bool, str]:
                 return True, ""
                 
             # 检查基本数据类型
-            if type(template) is not type(target) and not (isinstance(template, (int, float)) and isinstance(target, (int, float))):
+            if type(template) is not type(target):
+                # 宽松匹配策略：
+                # 1. 允许目标为 None 而模板为 str (视为 Optional[str] 字段缺失)
+                if isinstance(template, str) and target is None:
+                    return True, ""
+                # 2. 允许目标为数字而模板为 str (视为数字转字符串)
+                if isinstance(template, str) and isinstance(target, (int, float)):
+                    return True, ""
+                    
                 return False, f"路径 '{path}' 的类型不匹配: 期望 {type(template).__name__}, 实际 {type(target).__name__}"
                 
             # 如果是列表类型
             if isinstance(template, list):
                 if not template:  # 如果模板列表为空，则允许任何列表
                     return True, ""
-                if not target:  # 如果目标列表为空，但模板不为空
-                    return False, f"路径 '{path}' 的列表为空，但期望有内容"
+                # 允许目标列表为空，即 [] 是有效的
+                if not target and target is not None:
+                    return True, ""
+                if target is None:
+                    return False, f"路径 '{path}' 的列表为 None，但期望有内容"
                     
                 template_item = template[0]
                 for i, item in enumerate(target):

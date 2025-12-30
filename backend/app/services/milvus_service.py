@@ -63,9 +63,14 @@ class MilvusService:
         await self.vector_store.aadd_documents(documents)
         return True
 
-    async def search_similar(self, query: str, k: int = 4) -> List[Document]:
+    async def search_similar(self, query: str, k: int = 4, expr: str = None) -> List[Document]:
         """搜索相似文档"""
-        docs = await self.vector_store.asimilarity_search(query, k=k)
+        # LangChain Milvus 实现支持 expr 参数进行过滤
+        kwargs = {}
+        if expr:
+            kwargs["expr"] = expr
+            
+        docs = await self.vector_store.asimilarity_search(query, k=k, **kwargs)
         return docs
 
     def delete_collection(self):

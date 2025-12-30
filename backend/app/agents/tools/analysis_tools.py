@@ -27,7 +27,14 @@ async def go_nogo_analysis(tender_info: TenderInfo, company_info: str, openai_se
 - cons: 不利因素列表
 - missing_capabilities: 缺失资质/能力列表
 """
-    schema = GoNoGoDecision.model_json_schema()
+    schema = {
+        "decision": True,
+        "score": 85,
+        "reasoning": "示例理由",
+        "pros": ["优势1"],
+        "cons": ["劣势1"],
+        "missing_capabilities": ["缺失1"]
+    }
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": prompt}
@@ -59,7 +66,16 @@ async def detect_risk_clauses(tender_content: str, openai_service: OpenAIService
 招标文件内容片段：
 {tender_content[:15000]}
 """
-    schema = RiskAnalysisResponse.model_json_schema()
+    schema = {
+        "overall_risk": "low",
+        "risks": [{
+            "clause": "示例条款",
+            "description": "示例描述",
+            "level": "low",
+            "suggestion": "示例建议"
+        }],
+        "summary": "示例综述"
+    }
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": prompt}
@@ -95,7 +111,17 @@ async def simulate_evaluation(tender_info: TenderInfo, company_info: str, openai
     - analysis: 分析
     - optimization_suggestion: 提分建议
 """
-    schema = ScoringSimulationResponse.model_json_schema()
+    schema = {
+        "total_score": 90,
+        "win_probability": "高",
+        "items": [{
+            "item_name": "评分项1",
+            "max_score": 10,
+            "predicted_score": 8,
+            "analysis": "分析内容",
+            "optimization_suggestion": "建议内容"
+        }]
+    }
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": prompt}
