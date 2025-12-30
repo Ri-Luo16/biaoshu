@@ -38,7 +38,7 @@ export default function Sidebar({ currentStep, onStepClick, onConfigUpdate }: Si
           <DocumentTextIcon className="w-6 h-6 text-white" />
         </div>
         <div>
-          <h1 className="text-white font-bold text-lg leading-tight">AI 标书助手</h1>
+          <h1 className="text-white font-bold text-lg leading-tight">AI标书</h1>
           <p className="text-xs text-slate-500">专业版</p>
         </div>
       </div>

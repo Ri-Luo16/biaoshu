@@ -9,7 +9,7 @@ except ImportError:
 
 class Settings(BaseSettings):
     """应用设置"""
-    app_name: str = "AI写标书助手"
+    app_name: str = "AI标书"
     app_version: str = "2.0.0"
     debug: bool = False
     

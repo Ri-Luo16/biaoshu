@@ -6,6 +6,14 @@
   <component name="ChangeListManager">
     <list default="true" id="3fae9589-ccf4-4a44-83bc-f2def4d11996" name="更改" comment="标书功能添加 12-30">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/FIX_404_ERROR.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/FRONTEND_BACKEND_FIX.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/TEST_RESULT.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/app/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/app/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/public/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/public/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/public/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/public/manifest.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/Sidebar.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/Sidebar.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -56,7 +64,7 @@
       <option name="presentableId" value="Default" />
       <updated>1766992224493</updated>
       <workItem from="1766992225574" duration="165000" />
-      <workItem from="1767057057141" duration="2143000" />
+      <workItem from="1767057057141" duration="2737000" />
     </task>
     <task id="LOCAL-00001" summary="标书功能添加 12-30">
       <option name="closed" value="true" />

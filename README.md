@@ -1,170 +1,119 @@
-# 易标极速版 - AI智能标书写作助手
+# 🚀 AI标书 (AI Bidding System)
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.8+-blue.svg" alt="Python">
-  <img src="https://img.shields.io/badge/React-18+-61dafb.svg" alt="React">
+  <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python">
+  <img src="https://img.shields.io/badge/React-18-61dafb.svg" alt="React">
   <img src="https://img.shields.io/badge/FastAPI-0.104+-009688.svg" alt="FastAPI">
+  <img src="https://img.shields.io/badge/Milvus-RAG-orange.svg" alt="Milvus">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
 </p>
 
-
-<p align="left">
-  <strong>🚀 基于 AI 的智能标书写作助手，让标书制作变得简单高效</strong>
+<p align="center">
+  <strong>新一代智能标书解决方案：深度解析、风险评估、决策辅助与自动写作</strong>
 </p>
 
+---
 
+**AI标书** 不仅仅是一个写作工具，它是一个全流程的招投标辅助系统。结合了最新的 **RAG (检索增强生成)** 技术、**深度联网搜索** 和 **智能决策 Agent**，帮助企业在激烈的竞标中脱颖而出。
 
+## ✨ 核心功能亮点
 
-### ✨ 核心功能
+### 🧠 1. 深度标书分析 Agent
+不仅仅是阅读，更是理解。系统内置专业的 Bidding Agent，能够对招标文件进行全方位分析：
+- **📊 风险智能识别**：自动扫描招标文件，识别潜在的法律风险、商务风险和技术陷阱。
+- **⚖️ Go/No-Go 决策辅助**：基于企业资质和招标要求，通过多维度加权评分，提供科学的投标决策建议。
+- **💯 模拟评分系统**：根据评分标准模拟技术打分，帮助优化技术方案，提高中标率。
 
-- **🤖 智能文档解析**：自动分析招标文件，提取关键信息和技术评分要求
-- **📝 AI生成目录**：基于招标文件智能生成专业的三级标书目录结构  
-- **⚡ 内容自动生成**：为每个章节自动生成高质量、针对性的标书内容
-- **🎯 个性化定制**：支持***自定义AI模型***
-- **💾 一键导出**：导出word，自由编辑
+### 🌐 2. 深度联网搜索 (Deep Search)
+告别信息闭塞，实时获取最新行业动态：
+- **🔍 全网即时检索**：集成 **DuckDuckGo** 搜索引擎，实时获取相关技术参数、竞品信息和行业标准。
+- **🕸️ 智能网页提取**：内置 **Playwright** 和 **Requests** 双引擎，能够穿透反爬策略，精准提取网页深度内容。
+- **🧹 自动清洗整理**：AI 自动清洗网页杂乱信息，提取核心知识点用于标书写作。
 
-### 🌟 产品优势
+### 📚 3. RAG 企业知识库 (Milvus + Ollama)
+打造越用越聪明的标书助手：
+- **💾 向量数据库集成**：内置 **Milvus** 向量数据库支持，构建企业专属的投标素材库。
+- **🦙 本地模型支持**：支持使用 **Ollama** 运行本地 Embedding 模型，保障数据隐私安全。
+- **🔗 知识检索增强**：写作时自动检索过往优质标书案例和技术文档，确保内容专业、准确。
 
-- ⏱️ **效率提升**: 将传统需要数天的标书制作缩短至几小时
-- 🎨 **专业质量**: AI生成的内容结构清晰、逻辑严密、符合行业标准
-- 🔧 **易于使用**: 简洁直观的界面设计，无需专业培训即可上手
-- 🔄 **持续优化**: 基于用户反馈不断改进AI算法和用户体验
-
-## 🌐 官方网站
-
-**在线体验**: [https://yibiao.pro](https://yibiao.pro)
-
-获取更多产品信息、在线体验和技术支持。
-
-## 📦 使用说明
-
-### 💻 系统要求
-
-- Windows 10/11 (64位)
-- 至少 4GB 内存
-- 100MB 可用磁盘空间
-
-### ⬇️ 下载安装
-
-1. **直接下载**：从 [GitHub Releases](https://github.com/yibiaoai/yibiao-simple/releases) 下载最新版本的exe文件
-2. **运行程序**：双击 `yibiao-simple.exe` 即可启动应用
-3. **配置AI**：首次使用需要配置API Key密钥（推荐DeepSeek）
-
-
-### 📝 使用流程
-
-1. **📌 配置AI**：支持所有openai like的大模型，推荐DeepSeek  
-  ![](./screenshots/1.png)
-2. **📄 文档上传**：上传招标文件（支持Word和PDF格式）  
-  ![](./screenshots/2.png)
-3. **🔍 文档分析**：AI自动解析招标文件，提取项目概述和技术要求  
-  ![](./screenshots/3.png)
-4. **📋 生成目录**：基于分析结果智能生成标书目录结构  
-  ![](./screenshots/4.png)
-5. **✍️ 生成正文**：为各章节生成内容，多线程并发，极速体验  
-  ![](./screenshots/5.png)
-6. **📤 导出标书**：一键导出完整的标书文档  
-  ![](./screenshots/6.png)
+### ✍️ 4. 智能写作与扩写
+- **📝 全文自动生成**：基于目录结构，多线程并发生成高质量标书内容。
+- **✨ 智能扩写优化**：支持上传图片、PDF 或 Word 片段，AI 能够基于参考资料进行针对性扩写和润色。
+- **📑 完美格式导出**：一键导出标准 Word 文档，格式排版无需二次调整。
 
 ## 🛠️ 技术架构
 
-### 架构设计
+本项目采用前沿的 AI 技术栈构建：
 
-采用现代化的**前后端分离架构**，确保高性能和良好的用户体验：
+| 模块 | 技术选型 | 说明 |
+|------|----------|------|
+| **前端** | React 18, TypeScript, TailwindCSS | 现代化、响应式的用户界面 |
+| **后端** | FastAPI, Python 3.10+ | 高性能异步 API 服务 |
+| **LLM** | OpenAI SDK (GPT-4/DeepSeek), Ollama | 支持云端主流大模型及本地模型 |
+| **RAG** | Milvus, LangChain, Ollama Embeddings | 向量检索与知识库管理 |
+| **Agent** | Bidding Agent (Custom) | 专有的招投标业务逻辑智能体 |
+| **搜索** | DuckDuckGo, Playwright | 深度网络信息采集 |
 
-- **前端**: React + TypeScript + Tailwind CSS
-- **后端**: FastAPI + Python
-- **AI集成**: OpenAI SDK
-- **部署**: PyInstaller 单文件打包
+## 📦 快速开始
 
+### 方式一：直接运行 (Windows用户推荐)
 
-### 🏗️ 项目结构
+1. 在 [Releases](https://github.com/yibiaoai/yibiao-simple/releases) 下载最新的 `yibiao-simple.exe`。
+2. 双击运行，浏览器自动打开应用。
+3. 在设置中配置 AI 模型 API Key (推荐使用 DeepSeek 或 OpenAI)。
 
-```
-易标极速版/
-├── 📁 backend/                 # 后端服务
-│   ├── 📁 app/
-│   │   ├── main.py            # FastAPI应用入口
-│   │   ├── config.py          # 应用配置
-│   │   ├── 📁 routers/        # API路由模块
-│   │   ├── 📁 services/       # 业务逻辑服务  
-│   │   └── 📁 models/         # 数据模型
-│   └── requirements.txt       # Python依赖
-├── 📁 frontend/               # 前端应用
-│   ├── 📁 src/
-│   │   ├── 📁 components/     # 可复用组件
-│   │   ├── 📁 pages/          # 页面组件
-│   │   ├── 📁 services/       # API服务
-│   │   └── 📁 hooks/          # React Hooks
-│   └── package.json           # 前端依赖
-├── single_port.bat            # 一键启动脚本
-├── build.py                   # 打包脚本
-└── README.md                  # 项目文档
-```
+### 方式二：源码部署
 
+#### 前置要求
+- Python 3.10+
+- Node.js 16+
+- (可选) Docker (用于运行 Milvus)
 
-## 🚀 参与开发
-
-### 开发环境运行
-
+#### 1. 启动后端服务
 ```bash
-# 克隆项目
 git clone https://github.com/yibiaoai/yibiao-simple.git
-cd yibiao-simple
-
-# 一键启动
-./single_port.bat
-
+cd yibiao-simple/backend
+pip install -r requirements.txt
+python run.py
 ```
 
-### 生产环境打包
-
+#### 2. 启动前端界面
 ```bash
-# 一键构建exe
-python build.py
-
-# Windows批处理脚本
-build.bat
+cd ../frontend
+npm install
+npm start
 ```
 
-构建完成后，exe文件位于 `dist/yibiao-simple.exe`
+## 📝 配置指南
 
-## 📚 API文档
+### AI 模型配置
+支持所有兼容 OpenAI 接口的模型。在设置页面填写：
+- **Base URL**: 例如 `https://api.deepseek.com/v1`
+- **API Key**: 您的密钥
+- **Model**: `deepseek-chat`, `gpt-4` 等
 
-启动应用后访问 `http://localhost:8000/docs` 查看完整的FastAPI自动生成的API文档。
+### 本地知识库配置 (可选)
+如需启用 RAG 功能，请确保本地安装了 Ollama 或配置了 OpenAI Embedding：
+1. 安装 [Ollama](https://ollama.ai/) 并拉取模型: `ollama pull nomic-embed-text`
+2. 系统会自动检测并优先使用本地 Ollama 模型进行向量化，节省成本。
 
+## 🤝 参与贡献
 
-## 📌代办任务
-- [ ] 录入预期字数
+我们欢迎各种形式的贡献，特别是关于 **Prompt 优化**、**解析规则增强** 和 **前端交互体验** 的改进。
 
-## 🤝 贡献指南
-
-欢迎各种形式的贡献！
-
-1. **🐛 问题反馈**: 在 [Issues](https://github.com/yibiaoai/yibiao-simple/issues) 中报告bug
-2. **💡 功能建议**: 提出新功能需求和改进建议  
-3. **🔧 代码贡献**: Fork项目，提交Pull Request
-4. **📖 文档完善**: 帮助改进文档和使用说明
-
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/NewFeature`)
+3. 提交改动 (`git commit -m 'Add NewFeature'`)
+4. 推送分支 (`git push origin feature/NewFeature`)
+5. 提交 Pull Request
 
 ## 📄 许可证
 
-本项目基于 [MIT License](LICENSE) 开源协议发布。
-
-## 🙋‍♂️ 联系我们
-
-- **官方网站**: [https://yibiao.pro](https://yibiao.pro)
-- **问题反馈**: [GitHub Issues]((https://github.com/yibiaoai/yibiao-simple/issues)
-- **邮箱联系**: support@yibiao.pro
+本项目基于 [MIT License](LICENSE) 开源。
 
 ---
 
 <p align="center">
-  ⭐ 如果这个项目对您有帮助，请给我们一个Star支持！
-</p>
-
-
-
-<p align="center">
-  Made with ❤️ by 易标团队 
+  ⭐ 如果觉得项目不错，请给一个 Star 支持！<br>
+  Made with ❤️ by AI标书团队
 </p>
