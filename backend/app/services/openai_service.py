@@ -1,4 +1,3 @@
-"""OpenAI服务"""
 import json
 import asyncio
 import copy
@@ -13,32 +12,25 @@ from ..utils.config_manager import config_manager
 
 
 class OpenAIService:
-    """OpenAI服务类"""
-    
     def __init__(self) -> None:
-        """初始化OpenAI服务，从config_manager读取配置"""
-        # 从配置管理器加载配置
         config = config_manager.load_config()
-        self.api_key: str = config.get('api_key', '')
-        self.base_url: str = config.get('base_url', '')
-        self.model_name: str = config.get('model_name', 'gpt-3.5-turbo')
-
-        # 初始化OpenAI客户端 - 使用异步客户端
+        self.api_key = config.get('api_key', '')
+        self.base_url = config.get('base_url', '')
+        self.model_name = config.get('model_name', 'gpt-3.5-turbo')
         self.client = openai.AsyncOpenAI(
             api_key=self.api_key,
             base_url=self.base_url if self.base_url else None
         )
     
     async def get_available_models(self) -> List[str]:
-        """获取可用的模型列表"""
         try:
             models = await self.client.models.list()
-            chat_models = []
-            for model in models.data:
-                model_id = model.id.lower()
-                if any(keyword in model_id for keyword in ['gpt', 'claude', 'chat', 'llama', 'qwen', 'deepseek']):
-                    chat_models.append(model.id)
-            return sorted(list(set(chat_models)))
+            keywords = ['gpt', 'claude', 'chat', 'llama', 'qwen', 'deepseek']
+            chat_models = [
+                model.id for model in models.data 
+                if any(keyword in model.id.lower() for keyword in keywords)
+            ]
+            return sorted(set(chat_models))
         except Exception as e:
             raise Exception(f"获取模型列表失败: {e}") from e
     
@@ -49,7 +41,6 @@ class OpenAIService:
         response_format: dict = None,
         max_tokens: int = 4096
     ) -> AsyncGenerator[str, None]:
-        """流式聊天完成请求 - 真正的异步实现"""
         try:
             stream = await self.client.chat.completions.create(
                 model=self.model_name,
@@ -57,34 +48,36 @@ class OpenAIService:
                 temperature=temperature,
                 stream=True,
                 max_tokens=max_tokens,
-                **({"response_format": response_format} if response_format is not None else {})
+                **({"response_format": response_format} if response_format else {})
             )
 
             is_thinking = False
             async for chunk in stream:
                 try:
-                    if chunk.choices and len(chunk.choices) > 0:
-                        if (content := chunk.choices[0].delta.content) is not None:
-                            # 过滤 DeepSeek 的 think 块
-                            if "<think>" in content:
-                                is_thinking = True
-                                parts = content.split("<think>")
-                                if parts[0]:
-                                    yield parts[0]
-                                continue
-                            
-                            if "</think>" in content:
-                                is_thinking = False
-                                parts = content.split("</think>")
-                                if len(parts) > 1 and parts[1]:
-                                    yield parts[1]
-                                continue
-                            
-                            if not is_thinking:
-                                yield content
-                except (IndexError, Exception) as e:
+                    if not chunk.choices:
+                        continue
+                    
+                    content = chunk.choices[0].delta.content
+                    if content is None:
+                        continue
+                    
+                    if "<think>" in content:
+                        is_thinking = True
+                        if parts := content.split("<think>")[0]:
+                            yield parts
+                        continue
+                    
+                    if "</think>" in content:
+                        is_thinking = False
+                        if parts := content.split("</think>")[1]:
+                            yield parts
+                        continue
+                    
+                    if not is_thinking:
+                        yield content
+                        
+                except Exception as e:
                     if isinstance(e, IndexError):
-                        print(f"IndexError in stream: {e}")
                         traceback.print_exc()
                     continue
 
@@ -92,9 +85,9 @@ class OpenAIService:
             traceback.print_exc()
             error_msg = str(e)
             if "502 Bad Gateway" in error_msg:
-                yield "错误: AI 服务提供商网关超时 (502 Bad Gateway)。这通常是因为请求过多或提供商负载过高，请稍后重试或尝试降低并发生成数量。"
+                yield "错误: AI 服务提供商网关超时，请稍后重试或降低并发数量。"
             elif "rate limit" in error_msg.lower():
-                yield "错误: 触发 AI 服务频率限制。请稍后重试。"
+                yield "错误: 触发 API 频率限制，请稍后重试。"
             else:
                 yield f"错误: {error_msg}"
 
@@ -124,35 +117,26 @@ class OpenAIService:
         log_prefix: str = "",
         raise_on_fail: bool = True,
     ) -> str:
-        """
-        通用的带 JSON 结构校验与重试的生成函数。
-        """
-        attempt = 0
-        while True:
-            full_content = await self._collect_stream_text(
-                messages,
-                temperature=temperature,
-                response_format=response_format,
+        for attempt in range(max_retries + 1):
+            content = await self._collect_stream_text(
+                messages, temperature, response_format
             )
 
-            # 检查是否是 API 调用错误信息（如 API Key 无效、网络错误等）
-            if str(full_content).strip().startswith("错误:"):
-                 # 直接抛出错误，不再重试 check_json
-                 raise Exception(full_content.strip())
+            if str(content).strip().startswith("错误:"):
+                raise Exception(content.strip())
 
-            isok, error_msg = check_json(str(full_content), schema)
-            if isok:
-                return full_content
+            is_valid, error_msg = check_json(str(content), schema)
+            if is_valid:
+                return content
 
-            prefix = f"{log_prefix} " if log_prefix else ""
             if attempt >= max_retries:
-                print(f"{prefix}check_json 校验失败，已达到最大重试次数({max_retries})：{error_msg}")
+                prefix = f"{log_prefix} " if log_prefix else ""
+                print(f"{prefix}JSON 校验失败，已达最大重试次数: {error_msg}")
                 if raise_on_fail:
-                    raise Exception(f"{prefix}check_json 校验失败: {error_msg}")
-                return full_content
+                    raise Exception(f"{prefix}JSON 校验失败: {error_msg}")
+                return content
 
-            attempt += 1
-            print(f"{prefix}check_json 校验失败，进行第 {attempt}/{max_retries} 次重试：{error_msg}")
+            print(f"{log_prefix} JSON 校验失败，第 {attempt + 1}/{max_retries} 次重试")
             await asyncio.sleep(0.5)
 
     async def ocr_image(self, base64_image: str) -> str:

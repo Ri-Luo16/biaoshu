@@ -1,6 +1,3 @@
-/**
- * 主应用组件
- */
 import React from 'react';
 import { useAppState } from './hooks/useAppState';
 import Sidebar from './components/Sidebar';
@@ -110,16 +107,9 @@ function App() {
           </div>
           
           <div className="flex items-center gap-3">
-            <div className="flex -space-x-2">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-400">
-                  AI
-                </div>
-              ))}
-            </div>
-            <button className="ml-4 px-4 py-1.5 bg-indigo-50 text-indigo-700 text-sm font-semibold rounded-full hover:bg-indigo-100 transition-colors">
-              分享项目
-            </button>
+            <span className="text-sm text-slate-500">
+              AI 写标书助手
+            </span>
           </div>
         </header>
 

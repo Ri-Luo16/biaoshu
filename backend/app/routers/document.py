@@ -1,11 +1,9 @@
-"""文档处理相关API路由"""
 import json
 import io
 import re
 import traceback
 from pathlib import Path
 from urllib.parse import quote
-from typing import List
 
 import docx
 from docx.shared import Pt, Inches
@@ -24,8 +22,7 @@ from ..utils.sse import sse_response
 router = APIRouter(prefix="/api/document", tags=["文档处理"])
 
 
-def set_run_font_simsun(run: docx.text.run.Run, size_pt: float = None) -> None:
-    """统一将 run 字体设置为宋体（包含 EastAsia 字体设置）"""
+def set_font(run: docx.text.run.Run, size_pt: float = None) -> None:
     run.font.name = "宋体"
     if size_pt:
         run.font.size = Pt(size_pt)
@@ -34,46 +31,43 @@ def set_run_font_simsun(run: docx.text.run.Run, size_pt: float = None) -> None:
         r.rFonts.set(qn("w:eastAsia"), "宋体")
 
 
-def set_paragraph_font_simsun(paragraph: docx.text.paragraph.Paragraph, size_pt: float = None) -> None:
-    """将段落内所有 runs 字体设置为宋体"""
+def set_paragraph_font(paragraph: docx.text.paragraph.Paragraph, size_pt: float = None) -> None:
     for run in paragraph.runs:
-        set_run_font_simsun(run, size_pt)
+        set_font(run, size_pt)
 
 
 def add_page_number(run: docx.text.run.Run) -> None:
-    """在 footer 中添加页码的 XML 字段"""
-    fldChar1 = OxmlElement('w:fldChar')
-    fldChar1.set(qn('w:fldCharType'), 'begin')
-
-    instrText = OxmlElement('w:instrText')
-    instrText.set(qn('xml:space'), 'preserve')
-    instrText.text = "PAGE"
-
-    fldChar2 = OxmlElement('w:fldChar')
-    fldChar2.set(qn('w:fldCharType'), 'separate')
-
-    t = OxmlElement('w:t')
-    t.text = "1"
-
-    fldChar3 = OxmlElement('w:fldChar')
-    fldChar3.set(qn('w:fldCharType'), 'end')
-
-    run._element.append(fldChar1)
-    run._element.append(instrText)
-    run._element.append(fldChar2)
-    run._element.append(t)
-    run._element.append(fldChar3)
+    elements = [
+        ('w:fldChar', {'w:fldCharType': 'begin'}),
+        ('w:instrText', {'xml:space': 'preserve'}, 'PAGE'),
+        ('w:fldChar', {'w:fldCharType': 'separate'}),
+        ('w:t', {}, '1'),
+        ('w:fldChar', {'w:fldCharType': 'end'}),
+    ]
+    
+    for elem_data in elements:
+        elem = OxmlElement(elem_data[0])
+        if len(elem_data) > 1:
+            for key, value in elem_data[1].items():
+                elem.set(qn(key), value)
+        if len(elem_data) > 2:
+            elem.text = elem_data[2]
+        run._element.append(elem)
 
 
 def add_markdown_runs(para: docx.text.paragraph.Paragraph, text: str) -> None:
     parts = re.split(r"(\*\*.*?\*\*|\*.*?\*|`.*?`)", text)
     for part in parts:
-        if not part: continue
+        if not part:
+            continue
         run = para.add_run()
-        if part.startswith("**") and part.endswith("**"): run.text, run.bold = part[2:-2], True
-        elif part.startswith("*") and part.endswith("*"): run.text, run.italic = part[1:-1], True
-        else: run.text = part
-        set_run_font_simsun(run)
+        if part.startswith("**") and part.endswith("**"):
+            run.text, run.bold = part[2:-2], True
+        elif part.startswith("*") and part.endswith("*"):
+            run.text, run.italic = part[1:-1], True
+        else:
+            run.text = part
+        set_font(run)
 
 
 def add_markdown_paragraph(doc: docx.Document, text: str) -> None:
@@ -86,15 +80,19 @@ def render_markdown_blocks(doc: docx.Document, blocks: list) -> None:
     for block in blocks:
         kind = block[0]
         if kind == "list":
-            for k, n, t in block[1]:
+            for list_kind, num, text in block[1]:
                 p = doc.add_paragraph()
                 p.paragraph_format.left_indent = Inches(0.3)
-                run = p.add_run("• " if k == "unordered" else f"{n}. ")
-                set_run_font_simsun(run); add_markdown_runs(p, t)
+                prefix = "• " if list_kind == "unordered" else f"{num}. "
+                run = p.add_run(prefix)
+                set_font(run)
+                add_markdown_runs(p, text)
         elif kind == "heading":
-            h = doc.add_heading(block[2], level=block[1]); set_paragraph_font_simsun(h)
+            h = doc.add_heading(block[2], level=block[1])
+            set_paragraph_font(h)
         elif kind == "paragraph":
-            p = doc.add_paragraph(); p.paragraph_format.first_line_indent = Inches(0.3)
+            p = doc.add_paragraph()
+            p.paragraph_format.first_line_indent = Inches(0.3)
             add_markdown_runs(p, block[1])
 
 
@@ -128,11 +126,6 @@ def parse_markdown_blocks(content: str) -> list:
 
 @router.post("/upload", response_model=FileUploadResponse)
 async def upload_file(file: UploadFile = File(...)) -> FileUploadResponse:
-    """上传文档文件并提取文本内容"""
-    print(f"\n{'='*60}")
-    print(f"[API] 收到文件上传请求: {file.filename} ({file.content_type})")
-    print(f"{'='*60}\n")
-    
     try:
         allowed_exts = {".pdf", ".docx", ".doc", ".docm"}
         allowed_types = {
@@ -153,7 +146,6 @@ async def upload_file(file: UploadFile = File(...)) -> FileUploadResponse:
             )
         
         file_content, file_url = await FileService.process_uploaded_file(file)
-        print(f"[API] 文件处理完成: {len(file_content)} 字符, URL: {file_url}")
         
         return FileUploadResponse(
             success=True,
@@ -164,7 +156,6 @@ async def upload_file(file: UploadFile = File(...)) -> FileUploadResponse:
         )
         
     except Exception as e:
-        print(f"[API ERROR] 文件处理异常: {e}")
         traceback.print_exc()
         return FileUploadResponse(
             success=False,
@@ -297,14 +288,14 @@ async def export_word(request: WordExportRequest) -> StreamingResponse:
         title_p = doc.add_paragraph()
         title_run = title_p.add_run("投 标 文 件")
         title_run.bold, title_run.font.size = True, Pt(42)
-        set_run_font_simsun(title_run)
+        set_font(title_run)
         title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
         doc.add_paragraph("\n")
         tech_p = doc.add_paragraph()
         tech_run = tech_p.add_run("（技 术 部 分）")
         tech_run.font.size = Pt(22)
-        set_run_font_simsun(tech_run)
+        set_font(tech_run)
         tech_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
         doc.add_paragraph("\n\n\n\n")
@@ -324,12 +315,12 @@ async def export_word(request: WordExportRequest) -> StreamingResponse:
             cell_l.text = labels[i]
             p_l = cell_l.paragraphs[0]
             p_l.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            set_paragraph_font_simsun(p_l, 14)
+            set_paragraph_font(p_l, 14)
             
             cell_v = info_table.cell(i, 1)
             cell_v.text = values[i]
             p_v = cell_v.paragraphs[0]
-            set_paragraph_font_simsun(p_v, 14)
+            set_paragraph_font(p_v, 14)
             for run in p_v.runs: run.underline = True
 
         doc.add_page_break()
@@ -340,7 +331,7 @@ async def export_word(request: WordExportRequest) -> StreamingResponse:
             footer_para = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
             footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             run = footer_para.add_run()
-            set_run_font_simsun(run, 9)
+            set_font(run, 9)
             add_page_number(run)
 
         # 4. 目录页
@@ -352,7 +343,7 @@ async def export_word(request: WordExportRequest) -> StreamingResponse:
                 toc_p = doc.add_paragraph()
                 toc_p.paragraph_format.left_indent = Inches(0.2 * (level - 1))
                 toc_run = toc_p.add_run(f"{item.id} {item.title}")
-                set_run_font_simsun(toc_run, 10.5)
+                set_font(toc_run, 10.5)
                 if level == 1: toc_run.bold = True
                 if item.children: add_toc_item(item.children, level + 1)
         
@@ -362,16 +353,15 @@ async def export_word(request: WordExportRequest) -> StreamingResponse:
         # 5. 项目概述
         if request.project_overview:
             h = doc.add_heading("项目概述", level=1)
-            set_paragraph_font_simsun(h)
-            # 优化：支持项目概述的 Markdown 渲染
+            set_paragraph_font(h)
             render_markdown_blocks(doc, parse_markdown_blocks(request.project_overview))
 
-        # 6. 正文渲染逻辑
         def add_outline_items(items: list, level: int = 1) -> None:
             for item in items:
-                if level == 1: doc.add_page_break()
+                if level == 1:
+                    doc.add_page_break()
                 h = doc.add_heading(f"{item.id} {item.title}", level=min(level, 3))
-                set_paragraph_font_simsun(h)
+                set_paragraph_font(h)
                 if not item.children:
                     if c := (item.content or "").strip(): 
                         render_markdown_blocks(doc, parse_markdown_blocks(c))
@@ -383,10 +373,17 @@ async def export_word(request: WordExportRequest) -> StreamingResponse:
         # 7. 落款与盖章页
         doc.add_page_break()
         doc.add_paragraph("\n\n\n")
-        for text in ["投标人（盖章）：__________________________", "\n", "法定代表人或授权代表（签字）：________________", "\n", f"日    期：{request.bid_date or '202X年XX月XX日'}"]:
+        signature_lines = [
+            "投标人（盖章）：__________________________",
+            "\n",
+            "法定代表人或授权代表（签字）：________________",
+            "\n",
+            f"日    期：{request.bid_date or '202X年XX月XX日'}"
+        ]
+        for text in signature_lines:
             p = doc.add_paragraph()
             run = p.add_run(text)
-            set_run_font_simsun(run, 14)
+            set_font(run, 14)
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
         buffer = io.BytesIO()
